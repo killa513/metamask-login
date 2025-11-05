@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@safe-global/api-kit": "^4.0.0",
+    "@safe-global/protocol-kit": "^6.1.1",
     "ethers": "^6.15.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
