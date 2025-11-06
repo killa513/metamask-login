@@ -2,6 +2,8 @@ import { useMetamaskLoginLogic } from "./hooks/use-metamask-login";
 
 
 import metamaskIcon from "./assets/metamask.svg";
+import logo from "./assets/logo.png"
+
 import { useState } from "react";
 const ENABLE_VERBOSE_LOGS = false;
 if (typeof window !== "undefined" && !ENABLE_VERBOSE_LOGS) {
@@ -39,28 +41,36 @@ export default function MetamaskLoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 via-gray-800 to-black p-6">
       <div className="w-full max-w-5xl bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 shadow-2xl relative">
         <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-extrabold text-white">Вход</h1>
-            <p className="mt-1 text-sm text-gray-300">Подключитесь через MetaMask для продолжения</p>
+          <div className="flex flex-col items-start">
+            <img
+              src={logo}
+              alt="Logo"
+              className="w-40 h-auto object-contain select-none"
+            />
+            <p className="mt-2 text-xs tracking-wide text-gray-400 uppercase">
+              SecureApp Управление ботами <span className="text-gray-300">v1.1.6</span>
+            </p>
           </div>
           <div className="">
             <button
               onClick={async () => { setLoading(true); await connectMetaMask(); setLoading(false); }}
-              className="w-full flex items-center gap-3 justify-center px-6 py-3 bg-white/90 rounded-lg font-semibold text-gray-800 hover:scale-[1.02] transition-transform"
+              className="flex items-center justify-center gap-3 px-7 py-3 rounded-xl bg-gradient-to-r from-gray-700/30 to-gray-600/30 border border-white/10 text-sm text-gray-200 font-semibold tracking-wide hover:from-gray-600/50 hover:to-gray-500/50 hover:scale-[1.03] hover:border-white/20 transition-all duration-300 ease-in-out"
             >
               <span className="w-8 h-8 inline-block">
                 <img src={metamaskIcon} alt="MetaMask" className="w-7 h-7" />
               </span>
-              <span>MetaMask</span>
+              <span className="uppercase tracking-wider">MetaMask</span>
             </button>
           </div>
+
+
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
           <div className="flex flex-col justify-between gap-4 bg-white/5 rounded-lg border border-white/10 shadow-sm p-5 h-full">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <div className="text-xs text-gray-300">Статус</div>
-                <div className="text-lg text-white font-medium">{connected ? "Подключен" : "Не подключен"}</div>
+                <div className="text-sm text-gray-200 mb-3 font-semibold tracking-wide">{connected ? "Подключен" : "Не подключен"}</div>
                 <div className="text-xs text-gray-400 mt-1">
                   Тип кошелька: <span className="text-white font-medium">{selectedSafe ? "Multisig (Gnosis Safe)" : "EOA"}</span>
                 </div>
@@ -119,17 +129,15 @@ export default function MetamaskLoginPage() {
             <div className="flex gap-2 mt-4">
               <button
                 type="button"
-                className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-md text-sm text-white transition-colors"
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-md text-sm text-gray-200 font-semibold tracking-wide transition-colors"
                 onClick={async () => { setLoading(true); await disconnect(); setLoading(false); }}
-
               >
                 Отключить
               </button>
               <button
                 type="button"
-                className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-md text-sm text-white transition-colors"
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-md text-sm text-gray-200 font-semibold tracking-wide transition-colors"
                 onClick={async () => { setLoading(true); await exportLogs(); setLoading(false); }}
-
               >
                 Подтвердить
               </button>
@@ -152,12 +160,13 @@ export default function MetamaskLoginPage() {
             </div>
             <div>
               <div className="bg-black/20 border border-white/10 rounded-md p-3 h-28 overflow-y-auto">
+                <br />
                 <div className="text-xs text-center text-gray-400 py-2">No data</div>
               </div>
             </div>
             <div className="flex justify-between items-center">
               <div className="text-xs text-gray-400">Всего:</div>
-              <div className="text-lg text-white font-medium">0.00 USDT</div>
+              <div className="text-sm text-gray-200 mb-3 font-semibold tracking-wide">0.00 USDT</div>
             </div>
           </div>
         </div>
@@ -278,13 +287,12 @@ export default function MetamaskLoginPage() {
             </div>
           ))}
         </div>
+        {loading && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-md">
+            <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+          </div>
+        )}
       </div>
-      {loading && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-md">
-          <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
-        </div>
-      )}
-
     </div>
-  );
+  )
 }
