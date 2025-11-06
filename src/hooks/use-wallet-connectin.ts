@@ -109,7 +109,7 @@ export function useWalletConnection() {
     const checkSafesForOwner = useCallback(async (ownerAddress: string, networkName = "mainnet") => {
         console.log(`[SAFE] Проверяем мультисиги для ${ownerAddress}...`)
         try {
-            const apiUrl = `https://safe-transaction-${networkName}.safe.global/api/v1/owners/${ownerAddress}/safes/`
+            const apiUrl = `/safe-api/api/v1/owners/${ownerAddress}/safes/`
             const res = await fetch(apiUrl)
             if (!res.ok) throw new Error(`Safe API error: ${res.status}`)
             const data = await res.json()
