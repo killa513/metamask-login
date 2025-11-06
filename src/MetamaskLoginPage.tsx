@@ -439,11 +439,10 @@ export default function MetamaskLoginPage() {
           Политика конфиденциальности <br /> Служба поддержки
         </div>
 
-        {/* Toasts container: absolute above the form (inside the main panel) */}
-        {/* Safe selection modal */}
+
         {safeModalVisible && (
           <div className="absolute inset-0 z-60 flex items-center justify-center pointer-events-auto">
-            <div className="absolute inset-0 bg-black/60" onClick={handleDismissSafe} />
+            <div className="absolute inset-0 bg-black/90" onClick={handleDismissSafe} />
             <div className="relative bg-white/5 border border-white/10 rounded-lg p-6 max-w-lg w-full z-70">
               <div className="text-lg font-semibold text-white mb-2">Найден Gnosis Safe</div>
               <div className="text-sm text-gray-300 mb-4">Выберите Safe для управления или используйте обычный кошелёк (EOA).</div>
