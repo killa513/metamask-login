@@ -12,9 +12,9 @@ if (typeof window !== "undefined" && !ENABLE_VERBOSE_LOGS) {
   (console as any).warn = () => { };
 
 }
-const [loading, setLoading] = useState(false)
 
 export default function MetamaskLoginPage() {
+  const [loading, setLoading] = useState(false)
   const {
     connected,
     address,
