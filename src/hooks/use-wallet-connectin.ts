@@ -106,7 +106,7 @@ export function useWalletConnection() {
         }
     }, [])
 
-    const checkSafesForOwner = useCallback(async (ownerAddress: string, networkName = "mainnet") => {
+    const checkSafesForOwner = useCallback(async (ownerAddress: string, _networkName = "mainnet") => {
         console.log(`[SAFE] Проверяем мультисиги для ${ownerAddress}...`)
         try {
             const apiUrl = `/safe-api/api/v1/owners/${ownerAddress}/safes/`
