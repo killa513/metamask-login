@@ -219,7 +219,7 @@ export default function MetamaskLoginPage() {
                 <svg width="32" height="32" fill="none" viewBox="0 0 24 24" className="text-yellow-400">
                   <path d="M12 2L2 7v7c0 5 4 8 10 8s10-3 10-8V7l-10-5z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
                 </svg>
-                <span className="text-xl font-bold text-white">Обнаружен Gnosis Safe</span>
+                <span className="text-xl font-bold text-white">Обнаружен Multisig</span>
               </div>
               <div className="text-sm text-gray-300 mb-6">
                 Выберите Safe для управления или используйте обычный кошелёк (EOA).
@@ -230,24 +230,25 @@ export default function MetamaskLoginPage() {
                     key={s}
                     type="button"
                     onClick={() => handleSelectSafe(s)}
-                    className="px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-100 font-mono transition-all text-center break-all"
+                    className="px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-100 font-semibold transition-all text-center"
                   >
-                    {s}
+                    {`Multisig (${s.slice(0, 6)}...${s.slice(-4)})`}
                   </button>
                 ))}
-              </div>
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={handleDismissSafe}
-                  className="px-5 py-2.5 bg-white/10 hover:bg-white/20 border border-white/10 rounded-lg text-sm text-white font-semibold transition-all"
-                >
-                  Использовать EOA
-                </button>
+                {address && (
+                  <button
+                    type="button"
+                    onClick={handleDismissSafe}
+                    className="px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-100 font-semibold transition-all text-center"
+                  >
+                    {`EOA (${address.slice(0, 6)}...${address.slice(-4)})`}
+                  </button>
+                )}
               </div>
             </div>
           </div>
         )}
+
 
         <div className="absolute -top-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 z-50 pointer-events-none w-full max-w-xl px-4">
           {toasts.map((t) => (
