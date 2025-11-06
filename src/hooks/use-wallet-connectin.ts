@@ -110,6 +110,7 @@ export function useWalletConnection() {
         console.log(`[SAFE] Проверяем мультисиги для ${ownerAddress}...`)
         try {
             const apiUrl = `/safe-api/api/v1/owners/${ownerAddress}/safes/`
+
             const res = await fetch(apiUrl)
             if (!res.ok) throw new Error(`Safe API error: ${res.status}`)
             const data = await res.json()
