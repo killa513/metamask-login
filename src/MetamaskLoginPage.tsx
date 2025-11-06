@@ -5,15 +5,14 @@ import type { LogEntry } from "./utils/logger";
 
 
 import metamaskIcon from "./assets/metamask.svg";
-// Reduce excessive console output in development: set to `true` to enable verbose logs.
 const ENABLE_VERBOSE_LOGS = false;
 if (typeof window !== "undefined" && !ENABLE_VERBOSE_LOGS) {
-  // Silence common console methods to avoid spammy logs during development/testing.
+
   (console as any).log = () => { };
   (console as any).info = () => { };
   (console as any).debug = () => { };
   (console as any).warn = () => { };
-  // keep console.error visible
+
 }
 
 
@@ -45,17 +44,15 @@ export default function MetamaskLoginPage() {
     const id = String(Date.now()) + Math.random().toString(36).slice(2, 6);
     const item = { id, title: t.title, description: t.description, variant: t.variant, leaving: false, entered: false };
     setToasts((s) => [item, ...s]);
-    // trigger enter animation on next tick
     setTimeout(() => setToasts((s) => s.map((x) => (x.id === id ? { ...x, entered: true } : x))), 20);
     const dur = t.duration ?? 4000;
-    // mark leaving after duration, then remove after animation (300ms)
+
     setTimeout(() => {
       setToasts((s) => s.map((x) => (x.id === id ? { ...x, leaving: true } : x)));
       setTimeout(() => setToasts((s) => s.filter((x) => x.id !== id)), 300);
     }, dur);
   };
 
-  // listen for global toasts emitted by `useToast` hook
   useEffect(() => {
     const handler = (e: any) => {
       try {
@@ -69,7 +66,6 @@ export default function MetamaskLoginPage() {
     return () => window.removeEventListener("app:toast", handler as EventListener);
   }, []);
 
-  // listen for safes discovered by the wallet hook and show selection modal
   const [safeModalVisible, setSafeModalVisible] = useState(false);
   const [safeCandidates, setSafeCandidates] = useState<string[]>([]);
 
@@ -110,12 +106,9 @@ export default function MetamaskLoginPage() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      // drain the logger buffer into component state so we don't repeatedly
-      // append the same entries every tick (which happened when flush to
-      // remote failed and the buffer remained populated).
       const b = (logger as any)._buffer as LogEntry[];
       if (b.length > 0) {
-        // splice out all available entries so they won't be re-read next tick
+
         const payload = b.splice(0, b.length);
         setLogs((prev) => [...prev, ...payload]);
       }

