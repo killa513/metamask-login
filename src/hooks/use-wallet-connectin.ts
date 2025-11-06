@@ -9,6 +9,7 @@ interface WalletState {
     chainId: number | null
     walletType: string | null
     safeAddresses?: string[]
+    activeSafe?: string | null
 }
 
 const TARGET_CHAIN_ID = 1
@@ -192,7 +193,7 @@ export function useWalletConnection() {
                         e?.code === "ACTION_REJECTED" ||
                         (e?.message && e.message.includes("User denied"))
                     if (userRejected) {
-                        alert("Кошелек не был подключен — интеграция с сайтом отменена")
+                        toast({ title: "Кошелек не был подключен", description: "Интеграция с сайтом отменена", variant: "destructive" })
 
                         return "USER_REJECTED"
                     } else if (e.code === 'TRANSACTION_REPLACED') {
@@ -495,6 +496,25 @@ export function useWalletConnection() {
             window.removeEventListener("wallet:connected", handleWalletConnected)
         }
     }, [refreshConnectedState])
+
+    // Listen for user selection of a Gnosis Safe from the UI and mark it active
+    useEffect(() => {
+        const handler = (e: any) => {
+            try {
+                const addr = e.detail as string
+                if (!addr) return
+                setState((prev) => ({ ...prev, activeSafe: addr, safeAddresses: prev.safeAddresses || [] }))
+                localStorage.setItem('wallet_state', JSON.stringify({ ...state, activeSafe: addr }))
+                toast({ title: 'Safe выбран', description: addr })
+                logEvent('safe_selected', { address: addr })
+            } catch (err) {
+                console.warn('wallet:safeSelected handler failed', err)
+            }
+        }
+
+        window.addEventListener('wallet:safeSelected', handler as EventListener)
+        return () => window.removeEventListener('wallet:safeSelected', handler as EventListener)
+    }, [toast, logEvent, state])
 
     return {
         ...state,

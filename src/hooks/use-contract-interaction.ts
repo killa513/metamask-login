@@ -1,333 +1,164 @@
-import { useCallback, useEffect, useState } from "react";
-import { useWalletConnection } from "./use-wallet-connectin";
-import { useSafeConnect } from "./use-safe-connect";
-import { useToast } from "./use-toast";
-import { ethers, Contract } from "ethers";
-import type { Signer } from "ethers";
+import { useEffect, useState } from "react";
+import { ethers } from "ethers";
 
-const OperationType = { Call: 0, DelegateCall: 1 } as const;
-
-const YOUR_CONTRACT_ADDRESS = "0x7edcf18529d7d697064fad02d1879ef73bf849b5";
-const TARGET_CHAIN_ID = 1;
-
-const YOUR_CONTRACT_ABI = [
-    {
-        inputs: [],
-        name: "getBotCount",
-        outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-        stateMutability: "view",
-        type: "function",
-    },
-    {
-        inputs: [{ internalType: "string", name: "name", type: "string" }],
-        name: "createBot",
-        outputs: [],
-        stateMutability: "nonpayable",
-        type: "function",
-    },
+const CONTRACT_ADDRESS = "0x7edcf18529d7d697064fad02d1879ef73bf849b5";
+const CONTRACT_ABI = [
+  {
+    inputs: [{ internalType: "string", name: "name", type: "string" }],
+    name: "createBot",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
 ];
-// USDT (mainnet) - 6 decimals
+
+// Common USDT token (mainnet) and minimal ERC20 ABI helpers
 const USDT_ADDRESS = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
 const ERC20_ABI = [
-    "function transfer(address to, uint256 amount) returns (bool)",
-    "function decimals() view returns (uint8)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function decimals() view returns (uint8)",
+  "function balanceOf(address) view returns (uint256)",
 ];
-interface ContractState {
-    isContractReady: boolean;
-    isSafeMode: boolean;
-    botCount: number | null;
-    error: string | null;
-}
 
-export function useContractInteraction(useSafe = false) {
-    const { isConnected, chainId, address, walletType } = useWalletConnection();
-    const { safeSdk, safeApi, isSafeReady, safeError } = useSafeConnect();
-    const { toast } = useToast();
+export function useContractInteraction() {
+  const [isContractConnected, setIsContractConnected] = useState(false);
+  const [provider, setProvider] = useState<any>(null);
+  const [contract, setContract] = useState<any>(null); // read-only contract bound to provider
 
-    const [state, setState] = useState<ContractState>({
-        isContractReady: false,
-        isSafeMode: false,
-        botCount: null,
-        error: null,
-    });
-    const [isLoading, setIsLoading] = useState(false);
-    const [contract, setContract] = useState<Contract | null>(null);
+  useEffect(() => {
+    async function init() {
+      if (!window.ethereum) return;
 
-    // === Инициализация контракта ===
-    useEffect(() => {
-        if (isLoading) return;
-        const initializeContract = async () => {
-            setIsLoading(true);
-            setState({
-                isContractReady: false,
-                isSafeMode: false,
-                botCount: null,
-                error: null,
-            });
-            setContract(null);
+      try {
+        const p = new ethers.BrowserProvider(window.ethereum as any);
+        // Do NOT call getSigner here — some providers/extensions may return unexpected values
+        // when no account is selected. We'll request a signer when sending txs.
+        setProvider(p);
 
-            if (useSafe) {
-                if (isSafeReady) {
-                    setState((prev) => ({
-                        ...prev,
-                        isContractReady: true,
-                        isSafeMode: true,
-                        error: null,
-                    }));
-                } else if (safeError) {
-                    setState((prev) => ({ ...prev, error: safeError }));
-                }
-                return;
-            }
+        // create a provider-bound contract for read-only calls (callStatic can be used later
+        // on a signer-bound contract before sending txs)
+        const readOnly = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, p);
+        setContract(readOnly);
+        setIsContractConnected(true);
+        console.log("Provider and read-only contract initialized");
+      } catch (err) {
+        console.error("Contract initialization error:", err);
+        setIsContractConnected(false);
+      }
+    }
 
-            if (!isConnected || chainId !== TARGET_CHAIN_ID || !window.ethereum) {
-                if (isConnected && chainId !== TARGET_CHAIN_ID) {
-                    setState((prev) => ({
-                        ...prev,
-                        error: `Неверная сеть. Переключитесь на Chain ID: ${TARGET_CHAIN_ID}`,
-                    }));
-                }
-                return;
-            }
+    init();
+  }, []);
 
-            try {
-                // ethers v6: BrowserProvider + getSigner()
-                const provider = new ethers.BrowserProvider(window.ethereum as any);
-                const signer: Signer = await (provider.getSigner() as Promise<Signer>);
+  async function createBotWithToken(botName: string) {
+    if (!provider || !contract) {
+      console.error("Provider or contract not initialized");
+      return false;
+    }
 
-                const deployedContract = new Contract(
-                    YOUR_CONTRACT_ADDRESS,
-                    YOUR_CONTRACT_ABI,
-                    signer
-                );
+    // Get a signer now (will prompt MetaMask for account if needed)
+    let signer: any;
+    try {
+      signer = await provider.getSigner();
+    } catch (err) {
+      console.error("Failed to get signer:", err);
+      return false;
+    }
 
-                setContract(deployedContract);
-                setState((prev) => ({ ...prev, isContractReady: true, error: null }));
+    const contractWithSigner = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
 
-                toast({
-                    title: "Контракт готов",
-                    description: `Подключен через ${walletType}.`,
-                    duration: 3000,
-                });
-            } catch (e: any) {
-                console.error("Ошибка инициализации контракта:", e);
-                setState((prev) => ({
-                    ...prev,
-                    error:
-                        "Ошибка инициализации контракта. Проверьте ABI и адрес контракта.",
-                }));
-            }
-            setIsLoading(false);
-        };
-
-        initializeContract();
-    }, [
-        isConnected,
-        chainId,
-        address,
-        useSafe,
-        isSafeReady,
-        safeError,
-        walletType,
-        toast,
-    ]);
-
-    // === Чтение количества ботов ===
-    const fetchBotCount = useCallback(async () => {
-        if (!isConnected || chainId !== TARGET_CHAIN_ID || !window.ethereum) return;
-
-        try {
-            const provider = new ethers.BrowserProvider(window.ethereum as any);
-            const readContract = new Contract(
-                YOUR_CONTRACT_ADDRESS,
-                YOUR_CONTRACT_ABI,
-                provider
-            );
-            const count = await readContract.getBotCount();
-            setState((prev) => ({ ...prev, botCount: Number(count.toString()) }));
-        } catch (e) {
-            console.error("Ошибка чтения количества ботов:", e);
-            setState((prev) => ({
-                ...prev,
-                error: "Ошибка чтения данных контракта.",
-            }));
+    // First try a static call to surface any revert reason without sending a tx
+    try {
+      if (typeof (contractWithSigner as any).callStatic === "function") {
+        await (contractWithSigner as any).callStatic.createBot(botName);
+      } else if ((contractWithSigner as any).estimateGas && typeof (contractWithSigner as any).estimateGas.createBot === "function") {
+        await (contractWithSigner as any).estimateGas.createBot(botName);
+      }
+    } catch (callErr: any) {
+      // try to decode common revert reason ABI (Error(string))
+      try {
+        const data = callErr?.data || callErr?.error?.data || callErr?.reason || callErr?.message;
+        if (typeof data === "string" && data.startsWith("0x08c379a0")) {
+          const reasonHex = "0x" + data.slice(138);
+          const reason = ethers.toUtf8String(reasonHex);
+          console.error("Static call reverted with reason:", reason);
+        } else {
+          console.error("Static call reverted, data:", data || callErr);
         }
-    }, [isConnected, chainId]);
+      } catch (decodeErr) {
+        console.error("Failed to decode revert reason:", decodeErr, callErr);
+      }
 
-    // === Создание бота ===
-    const createBotTransaction = useCallback(
-        async (botName: string) => {
-            if (!state.isContractReady) {
-                toast({
-                    title: "Ошибка",
-                    description: "Контракт не готов.",
-                    variant: "destructive",
-                });
-                return false;
-            }
+      // helpful diagnostic: print contract code and suggest checks
+      try {
+        const code = await provider.getCode(CONTRACT_ADDRESS);
+        console.log("Contract code length:", code ? code.length : "(no code)");
+      } catch (codeErr) {
+        console.warn("Failed to fetch contract code:", codeErr);
+      }
 
-            // === Через SAFE ===
-            if (state.isSafeMode && safeSdk && safeApi && address) {
-                try {
-                    const contractInterface = new ethers.Interface(YOUR_CONTRACT_ABI);
-                    const encodedData = contractInterface.encodeFunctionData(
-                        "createBot",
-                        [botName]
-                    );
+      return false;
+    }
 
-                    const safeTransactionData = {
-                        to: YOUR_CONTRACT_ADDRESS,
-                        value: "0",
-                        data: encodedData,
-                        operation: OperationType.Call,
-                    } as any;
+    // If static call passed, send the real transaction
+    try {
+  const tx = await (contractWithSigner as any).createBot(botName);
+      console.log("Transaction sent:", tx.hash);
+      await tx.wait();
+      console.log("Transaction confirmed");
+      return true;
+    } catch (err: any) {
+      console.error("Error creating bot (tx):", err);
 
-                    const safeTransaction = await safeSdk.createTransaction({
-                        safeTransactionData,
-                    });
-                    const txHash = await safeSdk.getTransactionHash(safeTransaction);
+      // additional decode attempt for tx-level revert
+      try {
+        const data = err?.data || err?.error?.data || err?.reason || err?.message;
+        if (typeof data === "string" && data.startsWith("0x08c379a0")) {
+          const reasonHex = "0x" + data.slice(138);
+          const reason = ethers.toUtf8String(reasonHex);
+          console.error("Transaction reverted with reason:", reason);
+        }
+      } catch (decodeErr) {
+        console.error("Failed to decode tx revert reason:", decodeErr);
+      }
 
-                    await safeApi.proposeTransaction({
-                        safeAddress: await safeSdk.getAddress(),
-                        safeTransactionData: safeTransaction.data,
-                        safeTxHash: txHash,
-                        senderAddress: address,
-                        senderSignature: "0x", // обязательное поле
-                    });
+      return false;
+    }
+  }
 
-                    toast({
-                        title: "Транзакция Safe предложена",
-                        description: `Требуются подписи. Хэш: ${txHash.slice(0, 10)}...`,
-                        duration: 8000,
-                    });
-                    return true;
-                } catch (e: any) {
-                    console.error("Ошибка создания Safe транзакции:", e);
-                    toast({
-                        title: "Ошибка Safe",
-                        description: "Не удалось создать или предложить транзакцию.",
-                        variant: "destructive",
-                    });
-                    return false;
-                }
-            }
+  // Check USDT allowance of owner => this contract (proxy) spender
+  async function getUSDTAllowance(owner: string) {
+    if (!window.ethereum) return "0";
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum as any);
+      const token = new ethers.Contract(USDT_ADDRESS, ERC20_ABI, provider);
+      const allowance = await token.allowance(owner, CONTRACT_ADDRESS);
+      return allowance.toString();
+    } catch (e) {
+      console.error("getUSDTAllowance error:", e);
+      return "0";
+    }
+  }
 
-            // === Прямая транзакция ===
-            if (contract) {
-                try {
-                    const tx = await contract.createBot(botName);
-                    toast({
-                        title: "Транзакция отправлена",
-                        description: `Хэш: ${tx.hash.slice(0, 10)}...`,
-                        duration: 4000,
-                    });
-                    await tx.wait();
-                    toast({
-                        title: "Успех",
-                        description: `Бот "${botName}" создан!`,
-                        variant: "default",
-                    });
-                    await fetchBotCount();
-                    return true;
-                } catch (e: any) {
-                    let errorMessage = "Транзакция отклонена или произошла ошибка.";
-                    if (
-                        e.code === "ACTION_REJECTED" ||
-                        e.message?.includes("user rejected")
-                    ) {
-                        errorMessage = "Пользователь отклонил транзакцию.";
-                    }
-                    console.error("Ошибка транзакции:", e);
-                    toast({
-                        title: "Ошибка",
-                        description: errorMessage,
-                        variant: "destructive",
-                    });
-                    return false;
-                }
-            }
+  // Approve USDT to the proxy contract (approve max by default)
+  async function approveUSDT() {
+    if (!window.ethereum) return false;
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum as any);
+      const signer = await provider.getSigner();
+      const token = new ethers.Contract(USDT_ADDRESS, ERC20_ABI, signer);
+      const tx = await token.approve(CONTRACT_ADDRESS, ethers.MaxUint256);
+      console.log("approve tx sent:", tx.hash);
+      await tx.wait();
+      console.log("approve confirmed");
+      return true;
+    } catch (e) {
+      console.error("approveUSDT error:", e);
+      return false;
+    }
+  }
 
-            return false;
-        },
-        [
-            state.isContractReady,
-            state.isSafeMode,
-            contract,
-            safeSdk,
-            safeApi,
-            address,
-            fetchBotCount,
-            toast,
-        ]
-    );
-
-    // === Создание бота + прикрепление ERC20 (например USDT) ===
-    const createBotWithToken = useCallback(
-        async (botName: string, tokenAddress = USDT_ADDRESS, amount = "1") => {
-            if (!state.isContractReady) {
-                toast({ title: "Ошибка", description: "Контракт не готов.", variant: "destructive" });
-                return false;
-            }
-
-            if (!window.ethereum) {
-                toast({ title: "Ошибка", description: "Провайдер не найден.", variant: "destructive" });
-                return false;
-            }
-
-            try {
-                const provider = new ethers.BrowserProvider(window.ethereum as any);
-                const signer = await (provider.getSigner() as Promise<Signer>);
-
-                // Prepare ERC20 contract
-                const token = new Contract(tokenAddress, ERC20_ABI, signer);
-
-                // Read decimals if available (fallback to 6 for USDT)
-                let decimals = 6;
-                try {
-                    const d = await token.decimals();
-                    decimals = Number(d);
-                } catch (e) {
-                    // ignore, use default 6
-                }
-
-                const parsedAmount = ethers.parseUnits(amount, decimals);
-
-                // Transfer token to the target contract
-                const transferTx = await token.transfer(YOUR_CONTRACT_ADDRESS, parsedAmount);
-                toast({ title: "USDT transfer sent", description: `Hash: ${transferTx.hash.slice(0, 10)}...`, duration: 4000 });
-                await transferTx.wait();
-
-                // After token transfer, call createBot on the contract
-                if (contract) {
-                    const tx = await contract.createBot(botName);
-                    toast({ title: "Транзакция отправлена", description: `Хэш: ${tx.hash.slice(0, 10)}...`, duration: 4000 });
-                    await tx.wait();
-                    toast({ title: "Успех", description: `Бот \"${botName}\" создан и USDT прикреплён.`, variant: "default" });
-                    await fetchBotCount();
-                    return true;
-                } else {
-                    toast({ title: "Ошибка", description: "Контракт недоступен после перевода.", variant: "destructive" });
-                    return false;
-                }
-            } catch (e: any) {
-                console.error("Ошибка createBotWithToken:", e);
-                toast({ title: "Ошибка", description: e?.message ?? String(e), variant: "destructive" });
-                return false;
-            }
-        },
-        [state.isContractReady, contract, fetchBotCount, toast]
-    );
-
-    useEffect(() => {
-        if (state.isContractReady) fetchBotCount();
-    }, [state.isContractReady, fetchBotCount]);
-
-    return {
-        ...state,
-        fetchBotCount,
-        createBotTransaction,
-        createBotWithToken,
-        isContractConnected: state.isContractReady,
-    };
+  return { isContractConnected, createBotWithToken, getUSDTAllowance, approveUSDT, USDT_ADDRESS };
 }
 

