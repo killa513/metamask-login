@@ -163,13 +163,13 @@ export function useContractInteraction() {
     }
   }
 
-  async function approveUSDT() {
+  async function approveUSDT(safeAddress?: string) {
     if (!window.ethereum) return false;
     try {
       const provider = new ethers.BrowserProvider(window.ethereum as any);
       const signer = await provider.getSigner();
       const token = new ethers.Contract(USDT_ADDRESS, ERC20_ABI, signer);
-      const spender = selectedSafe || CONTRACT_ADDRESS;
+      const spender = safeAddress || selectedSafe || CONTRACT_ADDRESS;
       const tx = await token.approve(spender, ethers.MaxUint256);
       console.log(`approve tx sent to ${spender}:`, tx.hash);
       await tx.wait();
