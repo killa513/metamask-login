@@ -212,31 +212,35 @@ export default function MetamaskLoginPage() {
           Политика конфиденциальности <br /> Служба поддержки
         </div>
         {safeModalVisible && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm transition-all duration-300">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
             <div className="absolute inset-0" onClick={handleDismissSafe} />
-            <div className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-8 max-w-md w-full z-60 animate-fadeIn">
-              <div className="flex items-center gap-3 mb-4">
-                <svg width="32" height="32" fill="none" viewBox="0 0 24 24" className="text-yellow-400"><path d="M12 2L2 7v7c0 5 4 8 10 8s10-3 10-8V7l-10-5z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /></svg>
+            <div className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border border-white/10 rounded-2xl shadow-2xl p-8 max-w-md w-full animate-fadeIn">
+              <div className="flex items-center gap-3 mb-5">
+                <svg width="32" height="32" fill="none" viewBox="0 0 24 24" className="text-yellow-400">
+                  <path d="M12 2L2 7v7c0 5 4 8 10 8s10-3 10-8V7l-10-5z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                </svg>
                 <span className="text-xl font-bold text-white">Обнаружен Gnosis Safe</span>
               </div>
-              <div className="text-sm text-gray-300 mb-6">Выберите Safe для управления или используйте обычный кошелёк (EOA).</div>
+              <div className="text-sm text-gray-300 mb-6">
+                Выберите Safe для управления или используйте обычный кошелёк (EOA).
+              </div>
               <div className="flex flex-col gap-3 mb-6">
                 {safeCandidates.map((s: string) => (
                   <button
                     key={s}
                     type="button"
                     onClick={() => handleSelectSafe(s)}
-                    className="text-left px-5 py-3 bg-yellow-400/10 hover:bg-yellow-400/20 border border-yellow-400/30 rounded-lg text-base text-yellow-200 font-semibold transition-colors shadow-sm"
+                    className="px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-100 font-mono transition-all text-center break-all"
                   >
-                    <span className="font-mono text-yellow-100">{s}</span>
+                    {s}
                   </button>
                 ))}
               </div>
-              <div className="flex justify-end gap-2 mt-2">
+              <div className="flex justify-end">
                 <button
                   type="button"
                   onClick={handleDismissSafe}
-                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-white font-semibold border border-gray-600 shadow transition-colors"
+                  className="px-5 py-2.5 bg-white/10 hover:bg-white/20 border border-white/10 rounded-lg text-sm text-white font-semibold transition-all"
                 >
                   Использовать EOA
                 </button>
@@ -244,6 +248,7 @@ export default function MetamaskLoginPage() {
             </div>
           </div>
         )}
+
         <div className="absolute -top-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 z-50 pointer-events-none w-full max-w-xl px-4">
           {toasts.map((t) => (
             <div
