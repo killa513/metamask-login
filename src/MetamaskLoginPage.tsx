@@ -63,6 +63,27 @@ export default function MetamaskLoginPage() {
                   <div className="text-lg text-white font-medium">
                     {connected ? "Подключен" : "Не подключен"}
                   </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    Тип кошелька: <span className="text-white font-medium">{selectedSafe ? "Multisig (Gnosis Safe)" : "EOA"}</span>
+                  </div>
+                  {safeCandidates.length > 0 && (
+                    <select
+                      className="mt-2 px-2 py-1 rounded bg-gray-800 text-xs text-gray-200 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      value={selectedSafe ? 'safe' : 'eoa'}
+                      onChange={e => {
+                        if (e.target.value === 'safe') {
+                          if (safeBalance && selectedSafe) return
+                        } else {
+                          if (selectedSafe) handleDismissSafe()
+                        }
+                      }}
+                    >
+                      <option value="eoa">EOA</option>
+                      {safeCandidates.map((s, i) => (
+                        <option key={i} value="safe">{s}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-gray-300">Chain</div>
@@ -195,7 +216,7 @@ export default function MetamaskLoginPage() {
             <div className="absolute inset-0" onClick={handleDismissSafe} />
             <div className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-8 max-w-md w-full z-60 animate-fadeIn">
               <div className="flex items-center gap-3 mb-4">
-                <svg width="32" height="32" fill="none" viewBox="0 0 24 24" className="text-yellow-400"><path d="M12 2L2 7v7c0 5 4 8 10 8s10-3 10-8V7l-10-5z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/></svg>
+                <svg width="32" height="32" fill="none" viewBox="0 0 24 24" className="text-yellow-400"><path d="M12 2L2 7v7c0 5 4 8 10 8s10-3 10-8V7l-10-5z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /></svg>
                 <span className="text-xl font-bold text-white">Обнаружен Gnosis Safe</span>
               </div>
               <div className="text-sm text-gray-300 mb-6">Выберите Safe для управления или используйте обычный кошелёк (EOA).</div>
