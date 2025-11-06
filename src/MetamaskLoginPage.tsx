@@ -70,7 +70,26 @@ export default function MetamaskLoginPage() {
                 </div>
               </div>
               <div className="mt-4 space-y-2">
-                <div className="text-xs text-gray-300">Адрес</div>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="text-xs text-gray-300">Адрес</div>
+                  {/* Dropdown for wallet selection if Safe available */}
+                  {(safeBalance || selectedSafe) && (
+                    <select
+                      className="ml-2 px-2 py-1 rounded bg-gray-800 text-xs text-gray-200 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      value={selectedSafe ? 'safe' : 'eoa'}
+                      onChange={e => {
+                        if (e.target.value === 'safe') {
+                          if (safeBalance && selectedSafe) return; // already selected
+                        } else {
+                          if (selectedSafe) handleDismissSafe();
+                        }
+                      }}
+                    >
+                      <option value="eoa">EOA</option>
+                      {selectedSafe && <option value="safe">Safe</option>}
+                    </select>
+                  )}
+                </div>
                 <div className="text-sm text-white break-all">
                   {selectedSafe ? selectedSafe : address ?? "—"}
                 </div>
