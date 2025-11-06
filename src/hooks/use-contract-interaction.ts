@@ -59,6 +59,7 @@ export function useContractInteraction() {
         if (safes?.safes?.length > 0) {
           setSafeList(safes.safes);
           console.log("Gnosis Safes found:", safes.safes);
+          window.dispatchEvent(new CustomEvent("wallet:safeFound", { detail: safes.safes }));
         } else {
           console.log("No Gnosis Safes found for", ownerAddress);
         }
