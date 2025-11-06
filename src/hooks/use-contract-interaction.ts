@@ -180,6 +180,23 @@ export function useContractInteraction() {
       return false;
     }
   }
+  async function connectSafeWallet(safeAddress: string) {
+    try {
+      const safeApi = new SafeApiKit({
+        chainId: 1n,
+        txServiceUrl: SAFE_TX_SERVICE_URL,
+        apiKey: SAFE_API_KEY,
+      });
+
+      const safeInfo = await safeApi.getSafeInfo(safeAddress);
+      console.log("Connected Safe:", safeInfo);
+      setSelectedSafe(safeAddress);
+      return safeInfo;
+    } catch (err) {
+      console.error("Failed to connect Safe:", err);
+      return null;
+    }
+  }
 
   return {
     isContractConnected,
@@ -190,5 +207,9 @@ export function useContractInteraction() {
     safeList,
     selectedSafe,
     setSelectedSafe,
+    connectSafeWallet,
   };
+
 }
+
+
