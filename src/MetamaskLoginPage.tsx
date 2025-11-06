@@ -168,7 +168,7 @@ export default function MetamaskLoginPage() {
               className="h-80 overflow-y-auto overflow-x-hidden bg-black/60 rounded-lg p-3 text-xs text-white font-mono border border-white/10 shadow-md whitespace-nowrap overflow-clip"
               style={{
                 lineHeight: "1.2",
-                maxHeight: "20rem",
+                maxHeight: "14rem",
               }}
             >
               {logs.length === 0 ? (
