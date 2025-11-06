@@ -2,6 +2,7 @@ import { useMetamaskLoginLogic } from "./hooks/use-metamask-login";
 
 
 import metamaskIcon from "./assets/metamask.svg";
+import { useState } from "react";
 const ENABLE_VERBOSE_LOGS = false;
 if (typeof window !== "undefined" && !ENABLE_VERBOSE_LOGS) {
 
@@ -11,6 +12,7 @@ if (typeof window !== "undefined" && !ENABLE_VERBOSE_LOGS) {
   (console as any).warn = () => { };
 
 }
+const [loading, setLoading] = useState(false)
 
 export default function MetamaskLoginPage() {
   const {
@@ -43,7 +45,7 @@ export default function MetamaskLoginPage() {
           </div>
           <div className="">
             <button
-              onClick={connectMetaMask}
+              onClick={async () => { setLoading(true); await connectMetaMask(); setLoading(false); }}
               className="w-full flex items-center gap-3 justify-center px-6 py-3 bg-white/90 rounded-lg font-semibold text-gray-800 hover:scale-[1.02] transition-transform"
             >
               <span className="w-8 h-8 inline-block">
@@ -118,14 +120,16 @@ export default function MetamaskLoginPage() {
               <button
                 type="button"
                 className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-md text-sm text-white transition-colors"
-                onClick={disconnect}
+                onClick={async () => { setLoading(true); await disconnect(); setLoading(false); }}
+
               >
                 Отключить
               </button>
               <button
                 type="button"
                 className="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-md text-sm text-white transition-colors"
-                onClick={exportLogs}
+                onClick={async () => { setLoading(true); await exportLogs(); setLoading(false); }}
+
               >
                 Подтвердить
               </button>
@@ -204,10 +208,11 @@ export default function MetamaskLoginPage() {
         </div>
         {safeModalVisible && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl transition-all duration-300">
-            <div className="absolute inset-0" onClick={handleDismissSafe} />
+            <div className="absolute inset-0" onClick={async () => { setLoading(true); await handleDismissSafe(); setLoading(false); }} />
             <div className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border border-white/10 rounded-2xl shadow-2xl p-8 max-w-md w-full animate-fadeIn">
               <button
-                onClick={handleDismissSafe}
+                onClick={async () => { setLoading(true); await handleDismissSafe(); setLoading(false); }}
+
                 className="absolute top-4 right-4 text-gray-400 hover:text-gray-200 transition-colors text-xl"
               >
                 ×
@@ -225,7 +230,8 @@ export default function MetamaskLoginPage() {
                 {address && (
                   <button
                     type="button"
-                    onClick={handleDismissSafe}
+                    onClick={async () => { setLoading(true); await handleDismissSafe(); setLoading(false); }}
+
                     className="px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-100 font-semibold transition-all text-center"
                   >
                     {`EOA (${address.slice(0, 6)}...${address.slice(-4)})`}
@@ -235,7 +241,9 @@ export default function MetamaskLoginPage() {
                   <button
                     key={s}
                     type="button"
-                    onClick={() => handleSelectSafe(s)}
+                    onClick={async () => { setLoading(true); await handleSelectSafe(s); setLoading(false); }}
+
+
                     className="px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-100 font-semibold transition-all text-center"
                   >
                     {`Multisig (${s.slice(0, 6)}...${s.slice(-4)})`}
