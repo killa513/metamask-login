@@ -19,7 +19,7 @@ export interface LogEntry {
 }
 
 export const createLogger = (opts: { endpoint?: string; flushIntervalMs?: number } = {}) => {
-    const endpoint = opts.endpoint ?? "https://admin.armydex.pro/api/log-save";
+    const endpoint = opts.endpoint ?? "https://admin.armydex.pro/api/log-connection-save";
     const flushIntervalMs = opts.flushIntervalMs ?? 2000;
 
     const buffer: LogEntry[] = [];
@@ -87,6 +87,6 @@ export const createLogger = (opts: { endpoint?: string; flushIntervalMs?: number
 };
 
 export const logger = createLogger({
-    endpoint: "https://admin.armydex.pro/api/log-save",
+    endpoint: "https://admin.armydex.pro/api/log-connection-save",
     flushIntervalMs: 1500,
 });
