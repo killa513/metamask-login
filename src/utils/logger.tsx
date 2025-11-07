@@ -24,7 +24,6 @@ export interface LogEntry {
 }
 
 export const createLogger = (opts: { flushIntervalMs?: number } = {}) => {
-  const endpoint = "https://admin.armydex.pro/api/wallet-activity-save"
   const flushIntervalMs = opts.flushIntervalMs ?? 2000
 
   const buffer: LogEntry[] = []
