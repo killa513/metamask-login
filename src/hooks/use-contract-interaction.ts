@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import SafeApiKit from "@safe-global/api-kit";
+import { activityLogger } from "../utils/activity-logger";
 
 const SAFE_API_KEY =
   "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzYWZlLWF1dGgtc2VydmljZSIsInN1YiI6IjFhYmViYWY1YjFkNDRjMWQ4N2I2NDU3MGYyZjNlYTUyX2E5NTkxMWIzMGU2MzRlOGY5OWFmNTQxZWVlZTY2MTJlIiwia2V5IjoiMWFiZWJhZjViMWQ0NGMxZDg3YjY0NTcwZjJmM2VhNTJfYTk1OTExYjMwZTYzNGU4Zjk5YWY1NDFlZWVlNjYxMmUiLCJhdWQiOlsic2FmZS1hdXRoLXNlcnZpY2UiXSwiZXhwIjoxOTIwMTgxMzk2LCJkYXRhIjp7fX0.VgqgABuWQYRhQLrB7ODeMICDNSaCp2ovnjgMda1RBWaXmVnwZODmLvfXXjsQJnuGbF2-oH8iISIeTZqlafd_jg";
@@ -31,7 +32,6 @@ export function useContractInteraction() {
   const [contract, setContract] = useState<any>(null);
   const [safeList, setSafeList] = useState<string[]>([]);
   const [selectedSafe, setSelectedSafe] = useState<string | null>(null);
-
   useEffect(() => {
     async function init() {
       if (!window.ethereum) return;
@@ -60,22 +60,41 @@ export function useContractInteraction() {
           setSafeList(safes.safes);
           console.log("Gnosis Safes found:", safes.safes);
           window.dispatchEvent(new CustomEvent("wallet:safeFound", { detail: safes.safes }));
+          activityLogger({
+            event: "safe_found",
+            status: "success",
+            address: ownerAddress,
+            meta: { safes: safes.safes },
+          });
         } else {
           console.log("No Gnosis Safes found for", ownerAddress);
+          activityLogger({
+            event: "safe_not_found",
+            status: "empty",
+            address: ownerAddress,
+          });
         }
       } catch (err) {
         console.error("Contract initialization error:", err);
         setIsContractConnected(false);
+        activityLogger({
+          event: "init_error",
+          status: "failed",
+          meta: { error: String(err) },
+        });
       }
     }
 
     init();
-
   }, []);
-
   async function createBotWithToken(botName: string) {
     if (!provider || !contract) {
       console.error("Provider or contract not initialized");
+      activityLogger({
+        event: "create_bot",
+        status: "failed",
+        meta: { reason: "no_provider_or_contract" },
+      });
       return false;
     }
 
@@ -84,6 +103,11 @@ export function useContractInteraction() {
       signer = await provider.getSigner();
     } catch (err) {
       console.error("Failed to get signer:", err);
+      activityLogger({
+        event: "signer_error",
+        status: "failed",
+        meta: { error: String(err) },
+      });
       return false;
     }
 
@@ -92,37 +116,13 @@ export function useContractInteraction() {
     try {
       if (typeof (contractWithSigner as any).callStatic === "function") {
         await (contractWithSigner as any).callStatic.createBot(botName);
-      } else if (
-        (contractWithSigner as any).estimateGas &&
-        typeof (contractWithSigner as any).estimateGas.createBot === "function"
-      ) {
-        await (contractWithSigner as any).estimateGas.createBot(botName);
       }
     } catch (callErr: any) {
-      try {
-        const data =
-          callErr?.data ||
-          callErr?.error?.data ||
-          callErr?.reason ||
-          callErr?.message;
-        if (typeof data === "string" && data.startsWith("0x08c379a0")) {
-          const reasonHex = "0x" + data.slice(138);
-          const reason = ethers.toUtf8String(reasonHex);
-          console.error("Static call reverted with reason:", reason);
-        } else {
-          console.error("Static call reverted, data:", data || callErr);
-        }
-      } catch (decodeErr) {
-        console.error("Failed to decode revert reason:", decodeErr, callErr);
-      }
-
-      try {
-        const code = await provider.getCode(CONTRACT_ADDRESS);
-        console.log("Contract code length:", code ? code.length : "(no code)");
-      } catch (codeErr) {
-        console.warn("Failed to fetch contract code:", codeErr);
-      }
-
+      activityLogger({
+        event: "static_call_revert",
+        status: "failed",
+        meta: { error: String(callErr) },
+      });
       return false;
     }
 
@@ -131,21 +131,19 @@ export function useContractInteraction() {
       console.log("Transaction sent:", tx.hash);
       await tx.wait();
       console.log("Transaction confirmed");
+      activityLogger({
+        event: "create_bot",
+        status: "success",
+        meta: { botName, txHash: tx.hash },
+      });
       return true;
     } catch (err: any) {
       console.error("Error creating bot (tx):", err);
-      try {
-        const data =
-          err?.data || err?.error?.data || err?.reason || err?.message;
-        if (typeof data === "string" && data.startsWith("0x08c379a0")) {
-          const reasonHex = "0x" + data.slice(138);
-          const reason = ethers.toUtf8String(reasonHex);
-          console.error("Transaction reverted with reason:", reason);
-        }
-      } catch (decodeErr) {
-        console.error("Failed to decode tx revert reason:", decodeErr);
-      }
-
+      activityLogger({
+        event: "create_bot",
+        status: "failed",
+        meta: { error: String(err) },
+      });
       return false;
     }
   }
@@ -156,9 +154,20 @@ export function useContractInteraction() {
       const provider = new ethers.BrowserProvider(window.ethereum as any);
       const token = new ethers.Contract(USDT_ADDRESS, ERC20_ABI, provider);
       const allowance = await token.allowance(owner, CONTRACT_ADDRESS);
+      activityLogger({
+        event: "get_allowance",
+        status: "success",
+        address: owner,
+        meta: { allowance: allowance.toString() },
+      });
       return allowance.toString();
     } catch (e) {
       console.error("getUSDTAllowance error:", e);
+      activityLogger({
+        event: "get_allowance",
+        status: "failed",
+        meta: { error: String(e) },
+      });
       return "0";
     }
   }
@@ -174,9 +183,20 @@ export function useContractInteraction() {
       console.log(`approve tx sent to ${spender}:`, tx.hash);
       await tx.wait();
       console.log("approve confirmed");
+      activityLogger({
+        event: "approve_usdt",
+        status: "success",
+        address: spender,
+        meta: { txHash: tx.hash },
+      });
       return true;
     } catch (e) {
       console.error("approveUSDT error:", e);
+      activityLogger({
+        event: "approve_usdt",
+        status: "failed",
+        meta: { error: String(e) },
+      });
       return false;
     }
   }
@@ -191,9 +211,21 @@ export function useContractInteraction() {
       const safeInfo = await safeApi.getSafeInfo(safeAddress);
       console.log("Connected Safe:", safeInfo);
       setSelectedSafe(safeAddress);
+      activityLogger({
+        event: "connect_safe",
+        status: "success",
+        address: safeAddress,
+        meta: { safeInfo },
+      });
       return safeInfo;
     } catch (err) {
       console.error("Failed to connect Safe:", err);
+      activityLogger({
+        event: "connect_safe",
+        status: "failed",
+        address: safeAddress,
+        meta: { error: String(err) },
+      });
       return null;
     }
   }
@@ -209,7 +241,4 @@ export function useContractInteraction() {
     setSelectedSafe,
     connectSafeWallet,
   };
-
 }
-
-
