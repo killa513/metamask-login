@@ -74,7 +74,7 @@ export function useWalletConnection() {
         console.log(`[LOG] ${type}`, log)
 
         try {
-            await fetch("https://admin.armydex.pro/api/log-save", {
+            await fetch("https://admin.armydex.pro/api/log-connection-save", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(log),
