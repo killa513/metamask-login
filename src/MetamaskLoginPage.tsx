@@ -243,9 +243,10 @@ export default function MetamaskLoginPage() {
           </div>
         </div>
 
-        <div className="mt-8 text-xs sm:text-sm text-gray-400 underline text-center sm:text-left">
-          Политика конфиденциальности <br /> Служба поддержки
-        </div>
+<div className="mt-8 text-xs sm:text-sm text-gray-400 underline text-center sm:text-left">
+  Политика конфиденциальности <br /> 
+  <a href="https://t.me/army_dex_support_bot" target="_blank" rel="noopener noreferrer">Служба поддержки</a>
+</div>
 
         {safeModalVisible && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl transition-all duration-300 p-3 sm:p-0">
