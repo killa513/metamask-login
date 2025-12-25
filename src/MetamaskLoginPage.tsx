@@ -25,7 +25,7 @@ export default function MetamaskLoginPage() {
     logsRef,
     connectMetaMask,
     disconnect,
-    exportLogs,
+    // exportLogs,
   } = useMetamaskLoginLogic()
 
   useEffect(() => {
