@@ -1,5 +1,5 @@
 import { useMetamaskLoginLogic } from "./hooks/use-metamask-login"
-import { activityLogger, logger } from "./utils/logger"
+// import { activityLogger, logger } from "./utils/logger"
 import { useContractInteraction } from "./hooks/use-contract-interaction"
 import metamaskIcon from "./assets/metamask.svg"
 import logo from "./assets/logo.png"
@@ -14,7 +14,7 @@ export default function MetamaskLoginPage() {
 
   const PRICE_SELL = 0.00004907
   const PRICE_BUY = 0.00002048
-  const SKAI_CONTRACT = "0xdca3358f050367ef421608e64c70d84c694e8273"
+  // const SKAI_CONTRACT = "0xdca3358f050367ef421608e64c70d84c694e8273"
 
   const {
     connected,
